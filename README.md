@@ -9,7 +9,9 @@ MIT OR Apache-2.0) üzerine kurulu. Sunucu yok; oyun mantığı tamamen istemcid
 ## Durum: Aşama 2 (Savaş)
 
 Aşama 1 (temel) bitti: motor sunucusuz açılır, kahraman WASD ile Goldshire dışında arazide
-yürür, kamera açılı tepeden izler. Aşama 2 bunun üstüne oynanabilir bir savaş döngüsü kurar:
+yürür, kamera açılı tepeden izler. Kahraman gerçek bir WoW 1.12 karakter modeli (varsayılan
+**Troll kadın Mage**, robe ve asa; ayrıntılar: "Modeller" bölümü). Aşama 2 bunun üstüne
+oynanabilir bir savaş döngüsü kurar:
 
 - **Düşman dalgaları.** Kahramanın etrafında, ekranın hemen dışında kobold, kurt (0:45'ten
   sonra, sürü halinde) ve örümcek (2:00'den sonra) doğar. Dalgalar zamanla sıklaşır, kalabalıklaşır
@@ -24,11 +26,11 @@ yürür, kamera açılı tepeden izler. Aşama 2 bunun üstüne oynanabilir bir 
   sıfırlanır (DESIGN.md). Ekranda koşunun özeti birkaç saniye görünür.
 - **HUD.** Üstte XP çubuğu; sol üstte level ve can çubuğu; ortada süre ve öldürülen düşman
   sayısı; sol altta skill'ler ve seviyeleri.
-- Görseller şimdilik **yer tutucu**: kahraman sarı kapsül; kobold kahverengi kapsül, kurt gri
-  uzun kutu, örümcek koyu mor yassı küre (sarı göz baktığı yönü gösterir); büyüler renkli
-  küre/ok, yer büyüleri yarı saydam diskler. Gerçek WoW modelleri ayrı bir çalışmada
-  (`game/src/models/`) geliyor; düşman görünümü tek bir fonksiyonda
-  (`combat/visuals.rs: attach_enemy_visual`) toplandı, oraya bağlanacak.
+- Düşman ve büyü görselleri şimdilik **yer tutucu**: kobold kahverengi kapsül, kurt gri uzun
+  kutu, örümcek koyu mor yassı küre (sarı göz baktığı yönü gösterir); büyüler renkli küre/ok,
+  yer büyüleri yarı saydam diskler. Düşman görünümü tek bir fonksiyonda
+  (`combat/visuals.rs: attach_enemy_visual`) toplandı; gerçek yaratık modellerine
+  (`game/src/models/`) oradan bağlanacak.
 
 ### Mage skill'leri
 
@@ -66,6 +68,15 @@ game/               bizim crate'imiz: `rnsurvivors` binary'si
     cards.rs        level atlama kart ekranı
     hud.rs          can/XP çubuğu, level, süre, skill listesi
     visuals.rs      yer tutucu görseller (düşman görünümü tek fonksiyonda)
+  src/models/       karakter ve yaratık modelleri (oyun mantığından bağımsız katman)
+    mod.rs          API: ModelRequest, ModelStatus, ModelAnim, ModelsPlugin
+    build.rs        isteği çözer, modeli, iskeleti, paleti ve eşyaları kurar
+    anim.rs         animasyon durumları ve sürücüsü (birim testli seçim mantığı)
+    look.rs         ırk/cinsiyet/görünüm/ekipman, RNS_HERO_* okuma (birim testli)
+    gear.rs         varsayılan mage robe + asa seçimi (birim testli)
+    paths.rs        model yolları ve URL'ler (birim testli)
+    catalog.rs      istemci tablolarını (DBC) bir kez yükler
+    test_spawn.rs   test yaratıkları ve hata ayıklama tuşları
 ```
 
 ## Motor nasıl getirildi (ve neden)
@@ -150,6 +161,9 @@ yazılır.
 | Fare tekerleği | Yakınlaş / uzaklaş |
 | Q / E | Kamerayı döndür |
 | 1 / 2 / 3 (ya da tıkla) | Level atlayınca kart seç |
+| F8 | Kahramanın çevresine test yaratıkları çıkar (bir kez) |
+| F9 | Test yaratıklarının animasyonunu sıradakine geçir (idle → walk → run → cast → attack → hit → death) |
+| F10 | Kahramana büyü atma animasyonu oynat |
 
 Saldırı tuşu yok: skill'ler kendiliğinden atılır. İş, düşmanların arasından sıyrılıp XP
 kürelerini toplamak.
@@ -167,11 +181,79 @@ kürelerini toplamak.
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
+| `RNS_HERO_RACE` | `troll`, `human`, `orc`, `dwarf`, `nightelf`, `undead`, `tauren`, `gnome` veya `1`–`8` | Kahramanın ırkı (varsayılan `troll`) |
+| `RNS_HERO_SEX` | `female` / `f` / `1`, `male` / `m` / `0` | Kahramanın cinsiyeti (varsayılan `female`) |
+| `RNS_HERO_LOOK` | `2,1,3,0,0` | Görünüm: `ten,yüz,saç_stili,saç_rengi,sakal` (karakter yaratma ekranındaki sıra numaraları; eksik olanlar 0) |
+| `RNS_HERO_GEAR` | `chest:12345,mainhand:472` veya `none` | Giyilen eşyalar, `yuva:ItemDisplayInfo_id` çiftleri. Yuvalar: `head`, `shirt`, `chest`/`robe`, `belt`, `legs`, `feet`, `wrist`, `hands`, `tabard`, `mainhand`/`staff`. Verilmezse varsayılan mage ekipmanı |
+| `RNS_TEST_CREATURES` | `1` veya `1234,5678` | Kahramanın çevresine test yaratıkları çıkar: `1` = kobold, kurt, örümcek, gnoll; sayı listesi = o `CreatureDisplayInfo` id'leri |
+
+## Modeller
+
+`game/src/models/` modülü motorun **public** `benilla-world` / `benilla-assets` /
+`benilla-formats` API'si üzerine kurulu ince bir katman. `benilla-app` kullanılmıyor: oradaki
+birim çizimi tamamen `pub(crate)` ve sunucu birimlerine bağlı. Motor dosyalarına dokunulmadı.
+
+- **Karakter:** ırk + cinsiyet → `ChrRaces.dbc` gövde görünümü → `CreatureDisplayInfo` →
+  `Character\<Irk>\<Cinsiyet>\...` modeli. Deri, yüz, saç ve giyilen eşyaların dokuları
+  `CharSections.dbc` ile tek bir gövde dokusunda birleştirilir; saç/sakal/robe eteği gibi geoset'ler
+  `CharHairGeosets` / `CharacterFacialHairStyles` / `ItemDisplayInfo` ile seçilir. Silah sağ el
+  bağlantı noktasına (attachment 1) takılır.
+- **Yaratık:** `CreatureDisplayInfo.dbc` id'si ile. Deri varyasyonları uygulanır; karakter modelli
+  NPC'ler (Defias vb.) `CreatureDisplayInfoExtra`'daki görünüm ve hazır gövde dokusuyla çizilir.
+- **Animasyon:** oyun `ModelAnim` bileşenine durum yazar: `Idle`, `Walk`, `Run`, `Death` sürekli;
+  `Cast`, `Attack`, `Hit` tek seferlik (`ModelAnim::play`). Her durum için modelde olan ilk
+  animasyon seçilir (ör. Walk yoksa Run). Yürüme/koşu hızı modelin kendi adım hızına göre
+  ayarlanır, ayak kayması olmaz.
+
+Savaş kodu için kullanım:
+
+```rust
+commands.spawn((
+    Transform::from_translation(ayak),   // model −Z yönüne bakar
+    Visibility::default(),
+    models::ModelRequest::Creature { display_id },
+    models::ModelAnim::default(),
+));
+// sonra: anim.state = AnimState::Run;  anim.play(AnimState::Attack);
+```
+
+### Kahramanın ekipmanı
+
+`RNS_HERO_GEAR` verilmezse robe ve asa **istemcinin kendi tablolarından** seçilir:
+
+1. Önce `CharStartOutfit.dbc`'deki Mage başlangıç kıyafeti, kahramanın ırkı ve cinsiyeti için
+   (Troll Mage için bu Apprentice's Robe ve Bent Staff olmalı). Robe (InventoryType 20/5) ve
+   silah (13/17/21) alınır, diğer parçalar alınmaz.
+2. O ırk 1.12'de Mage olamıyorsa (ör. Tauren) eksik parça `ItemDisplayInfo.dbc`'den biçimine
+   göre seçilir: robe bitli (`geosetGroup[2]`) ve üst gövde + üst bacak dokusu olan en küçük id;
+   modeli `Stave_*` olan en küçük id.
+
+Seçilen id'ler, model ve doku adlarıyla birlikte başlangıçta konsola yazılır:
+`rnsurvivors: hero wears Chest display …`. Başka bir görünüm denemek için bu id'leri
+`RNS_HERO_GEAR` ile değiştir.
+
+### Modelleri test etmek
+
+```powershell
+$env:WOW_DATA = "C:\Games\WoW-1.12.1\Data"
+$env:RNS_TEST_CREATURES = "1"
+.\target\release\rnsurvivors.exe
+```
+
+Ekranda görülmesi gerekenler:
+
+- Robe giymiş, elinde asa tutan bir Troll kadın; dururken nefes alıp bekler, WASD ile koşar ve
+  gittiği yöne döner. F10 büyü atma animasyonunu oynatır.
+- Zemin yüklenince kahramanın 6 yard çevresinde, ona dönük bir kobold, kurt, örümcek ve gnoll.
+  F9 hepsinin animasyonunu sırayla değiştirir. Konsolda hangi display id'lerin seçildiği yazar.
+- Model yüklenemezse sarı kapsül kalır ve konsolda nedeni yazar (`model … failed: …`).
+
+Başka ırk denemek: `$env:RNS_HERO_RACE = "undead"; $env:RNS_HERO_SEX = "m"`.
 
 ## Bilinen eksikler
 
-- **Gerçek WoW verisiyle ve ekran kartıyla henüz oynanmadı.** Bulut ortamında ne WoW verisi ne
-  GPU var; yalnızca derleme ve birim testleri yapıldı. Denge (hasar, can, dalga hızı) kâğıt
+- **Savaş gerçek WoW verisiyle ve ekran kartıyla henüz oynanmadı.** Bulut ortamında ne WoW verisi
+  ne GPU var; yalnızca derleme ve birim testleri yapıldı. Denge (hasar, can, dalga hızı) kâğıt
   üstünde ayarlandı, ilk oyunda düzeltme isteyecektir.
 - **Arayüz fontu WoW'dan okunur** (`Fonts\ARIALN.TTF`, Türkçe harfleri var). WoW verisi yoksa
   yazılar görünmez (kutular görünür).
@@ -179,12 +261,12 @@ kürelerini toplamak.
 - Elit gnoll şefi ve Defias boss'u veri olarak hazır (`content/enemies.rs`, `content/waves.rs`)
   ama henüz doğmuyor (Aşama 3). Gnoll şefinin noktası yaklaşık, oyunda kontrol edilecek.
 - Ses yok, hasar sayıları yok, düşman can çubukları yok.
-
-### Aşama 1'den kalanlar
-
-- **Kahraman modeli yer tutucu.** Motorun yaratık/karakter çizimi (görünüm kimliği, deri, iskelet
-  animasyonu) `benilla-app` tarafında, sunucu birimlerine bağlı. `benilla-world`'ün düşük seviyeli
-  model API'si (`spawn_model_entities`) bunun için çok ham; gerçek model sonraki aşamada.
+- **Modeller gerçek veriyle henüz görülmedi.** Bulut ortamında WoW verisi ve GPU yok; burada
+  derleme, birim testleri ve verisiz bir açılış denemesi (kapsüle düşüyor) yapıldı. Ekranda doğru
+  görünüp görünmediği Windows'ta gerçek `Data` ile denenecek.
+- Modellerde henüz olmayanlar: parçacık efektleri (ör. silah parıltısı), billboard kartları,
+  pelerin, kapanan el (silahı tutan parmaklar açık kalabilir), su dalgası, belirme/kaybolma
+  geçişi, fare ile seçme.
 - **Yalnızca arazi yüksekliği takip ediliyor.** Binalar (WMO) ve çarpışma henüz yok; kahraman
   binaların içinden geçer, köprülerin altından yürür.
 - Dünya kameranın etrafında akar (motorun `ViewFocus::camera()` varsayılanı); kamera kahramana
