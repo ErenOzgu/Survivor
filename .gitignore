@@ -1,0 +1,14 @@
+# Build output
+target/
+**/target/
+
+# WoW game data never goes in the repo (CLAUDE.md §3)
+*.MPQ
+*.mpq
+Data/
+wow-data/
+
+# Local state
+.env
+*.log
+__pycache__/
