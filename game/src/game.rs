@@ -43,9 +43,7 @@ impl Plugin for GamePlugin {
             )
             .add_systems(
                 Update,
-                (move_hero, follow_camera)
-                    .chain()
-                    .in_set(WorldStage::Input),
+                (move_hero, follow_camera).chain().in_set(WorldStage::Input),
             );
     }
 }

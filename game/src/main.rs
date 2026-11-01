@@ -1,13 +1,11 @@
 //! The `rnsurvivors` launcher: boots the benilla world engine with no server, login or UI and
-//! adds [`game::GamePlugin`]. The boot sequence follows the engine's world viewer
+//! adds `rnsurvivors::game::GamePlugin`. The boot sequence follows the engine's world viewer
 //! (`benilla-world/src/worldview.rs`, MIT OR Apache-2.0), minus its free-fly camera and its
 //! check/screenshot instruments.
 
-mod config;
-mod game;
-mod motion;
-
 use bevy::prelude::*;
+
+use rnsurvivors::game;
 
 use benilla_world::build_id::BuildId;
 

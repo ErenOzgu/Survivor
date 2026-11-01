@@ -27,6 +27,12 @@ game/               bizim crate'imiz: `rnsurvivors` binary'si
   src/game.rs       GamePlugin: kahraman, hareket, takip kamerası
   src/motion.rs     saf hareket/kamera matematiği (birim testli)
   src/config.rs     ortam değişkenlerini okuma (birim testli)
+  src/run/          bir koşunun saf kuralları (Aşama 2 taslağı, henüz oyuna bağlı değil)
+    progression.rs  XP ve level
+    skills.rs       Mage skill'leri, loadout, level-up'ta 3 seçenek
+    combat.rs       can, hasar/kritik, cooldown, hedef seçme, yavaşlatma/kök/yanma
+    director.rs     mob dalgaları, doğma halkası, zorluk artışı, boss zamanlayıcısı
+    rng.rs          tohumlu rastgele sayı üreteci (tekrar üretilebilir koşular)
 ```
 
 ## Motor nasıl getirildi (ve neden)
@@ -121,6 +127,40 @@ yazılır.
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
+
+## Koşu kuralları (Aşama 2 taslağı)
+
+Bütün sayılar bu projenin kendi tasarımı (CLAUDE.md §2) ve `game/src/run/` içinde tek yerde
+duruyor; değiştirmek kolay. Henüz ekranda görünmüyorlar; sıradaki iş bunları oyuna bağlamak.
+
+- **Level:** sonraki level için gereken XP `10 + 6n + n²` (n = level − 1): 10, 17, 26, 37, 50…
+  En fazla level 60. Kill başına XP: normal 2, elit 15, mini boss 60, boss 200.
+- **Sınıf:** şimdilik Mage, koşuya Frostbolt ile başlıyor.
+- **Skill'ler:** en fazla 4 aktif ve 2 pasif, her biri 5 rank. Her rank +%25 hasar ve −%6
+  cooldown verir; skill'e özel ek: Frostbolt 4. rankta 2 mermi, Fireball 5. rankta 2 mermi,
+  Arcane Missiles rank başına +1 mermi, alan skill'lerinin yarıçapı büyür.
+
+  | Skill | Tür | Hasar | Cooldown | Etki |
+  |---|---|---|---|---|
+  | Frostbolt | mermi | 12 | 1.4 sn | %30 yavaşlatma, 2 sn |
+  | Fireball | mermi | 20 | 2.2 sn | vuruşun %25'i 3 sn'de yanma |
+  | Arcane Missiles | 3 mermi | 5 | 2.0 sn | — |
+  | Frost Nova | çevre patlaması, 6 yd | 8 | 6.0 sn | 1.5 sn kök |
+  | Blizzard | yer alanı, 5 yd, 4 sn | 4 / 0.5 sn | 7.0 sn | %40 yavaşlatma |
+  | Arcane Explosion | çevre patlaması, 4.5 yd | 7 | 2.5 sn | — |
+  | Arcane Intellect | pasif | rank başına +%8 hasar | | |
+  | Presence of Mind | pasif | rank başına −%5 cooldown | | |
+
+- **Level-up:** birbirinden farklı 3 seçenek gelir: sahip olunan skill'lerin yükseltmeleri ve boş
+  slota sığan yeni skill'ler. Yükseltmelerin çıkma ağırlığı biraz daha fazla. Seçecek bir şey
+  kalmayınca tek seçenek "canın %30'unu yenile".
+- **Savaş:** %5 kritik şansı, kritik ×1.5 hasar. Kahramanın canı 100; bir temas vuruşundan sonra
+  0.5 sn hasar almaz.
+- **Mob'lar:** ilk dalga hemen gelir. Dalga aralığı 1.5 sn'den başlar, her 3 dakikada yarıya
+  iner (en az 0.3 sn). Dalga başına mob sayısı dakikada +1 artar (en fazla 6). Mob canı dakikada
+  +%15 artar. Mob'lar kahramanın 24–30 yarda uzağında doğar; aynı anda en fazla 150 mob olur.
+  Hiçbir mob kahramandan (7 yd/sn) hızlı değildir.
+- **Map boss'u:** 10. dakikada kendiliğinden gelir.
 
 ## Bilinen eksikler (Aşama 1)
 
