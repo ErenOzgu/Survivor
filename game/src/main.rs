@@ -3,7 +3,9 @@
 //! (`benilla-world/src/worldview.rs`, MIT OR Apache-2.0), minus its free-fly camera and its
 //! check/screenshot instruments.
 
+mod combat;
 mod config;
+mod content;
 mod game;
 mod motion;
 
@@ -74,6 +76,7 @@ fn main() -> AppExit {
     app.insert_resource(benilla_world::schedule::WorldLive(true));
 
     app.add_plugins(game::GamePlugin);
+    app.add_plugins(combat::CombatPlugin);
 
     // After `AssetPlugin`: the loaders go into the live `AssetServer`.
     benilla_assets::register_asset_loaders(&mut app);
