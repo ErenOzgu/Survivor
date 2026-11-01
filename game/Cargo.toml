@@ -1,0 +1,16 @@
+[package]
+name = "rnsurvivors"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rnsurvivors: a survivors-style game in the WoW 1.12 world, on the benilla engine"
+
+[dependencies]
+benilla-world.workspace = true
+benilla-assets.workspace = true
+benilla-formats.workspace = true
+bevy.workspace = true
+
+[[bin]]
+name = "rnsurvivors"
+path = "src/main.rs"

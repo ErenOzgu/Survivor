@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = ["game"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# The engine: wenilla/benilla, pinned to one commit. Bumping the engine = changing `rev` in all
+# entries below (and in `[patch.crates-io]`) together, then `cargo update`.
+[workspace.dependencies]
+benilla-world = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf" }
+benilla-assets = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf", default-features = false }
+benilla-formats = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf", default-features = false }
+# The engine workspace's bevy feature set, verbatim: a different set would build bevy twice or
+# bring back the audio stack the engine leaves out.
+bevy = { version = "0.18.1", default-features = false, features = [
+    "default_app",
+    "default_platform",
+    "2d_bevy_render",
+    "3d_bevy_render",
+    "ui_api",
+    "ui_bevy_render",
+    "scene",
+    "picking",
+] }
+
+# A git dependency's own `[patch]` table is ignored by cargo, so the engine's patches that affect
+# what we build are repeated here, taken from the same engine commit. wgpu-hal: a presentation
+# stall is waited out instead of becoming a lost device (`third_party/wgpu-hal/BENILLA.md`).
+# The engine's kira and alsa patches are not needed: we do not link kira (no audio yet).
+[patch.crates-io]
+wgpu-hal = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf" }
+
+# As in the engine: dependencies at opt-level 3 in dev, or collision drops a run to <1 fps.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
