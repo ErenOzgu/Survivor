@@ -184,3 +184,22 @@ fn animate_flashes(
         xf.scale = Vec3::new(r, 1.0, r);
     }
 }
+
+#[cfg(test)]
+mod system_params {
+    use super::*;
+    use bevy::ecs::system::IntoSystem;
+
+    fn init<M>(world: &mut World, s: impl IntoSystem<(), (), M>) {
+        let mut s = IntoSystem::into_system(s);
+        s.initialize(world);
+    }
+
+    /// Each system's parameters are compatible (no conflicting queries); Bevy checks it here.
+    #[test]
+    fn systems_initialize() {
+        let mut world = World::new();
+        init(&mut world, animate_flashes);
+        init(&mut world, build_placeholders);
+    }
+}

@@ -274,3 +274,24 @@ mod tests {
         assert_eq!(super::clock(3600.0), "60:00");
     }
 }
+
+#[cfg(test)]
+mod system_params {
+    use super::*;
+    use bevy::ecs::system::IntoSystem;
+
+    fn init<M>(world: &mut World, s: impl IntoSystem<(), (), M>) {
+        let mut s = IntoSystem::into_system(s);
+        s.initialize(world);
+    }
+
+    /// Each system's parameters are compatible (no conflicting queries); Bevy checks it here.
+    #[test]
+    fn systems_initialize() {
+        let mut world = World::new();
+        init(&mut world, update_hud);
+        init(&mut world, ui_on_follow_camera);
+        init(&mut world, spawn_hud);
+        init(&mut world, load_font);
+    }
+}

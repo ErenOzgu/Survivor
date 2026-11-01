@@ -98,7 +98,7 @@ fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
 
 /// Dying returns the hero to the map start with a fresh run: skills, level and XP reset, every
 /// enemy, projectile, area and orb cleared.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn reset_run(
     mut commands: Commands,
     mut died: MessageReader<HeroDied>,
@@ -142,5 +142,25 @@ fn reset_run(
         xf.translation = wow_to_bevy(start.0.wow());
         // Re-snaps to the ground once the start's terrain is resident again.
         hero.grounded = false;
+    }
+}
+
+#[cfg(test)]
+mod system_params {
+    use super::*;
+    use bevy::ecs::system::IntoSystem;
+
+    fn init<M>(world: &mut World, s: impl IntoSystem<(), (), M>) {
+        let mut s = IntoSystem::into_system(s);
+        s.initialize(world);
+    }
+
+    /// Each system's parameters are compatible (no conflicting queries); Bevy checks it here.
+    #[test]
+    fn systems_initialize() {
+        let mut world = World::new();
+        init(&mut world, contact_damage);
+        init(&mut world, check_death);
+        init(&mut world, reset_run);
     }
 }

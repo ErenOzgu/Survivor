@@ -92,6 +92,7 @@ struct Spawner {
     next: f32,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_waves(
     mut commands: Commands,
     time: Res<Time>,
@@ -225,5 +226,25 @@ fn kill_enemies(
             spawn_orb(&mut commands, &assets, xf.translation, e.xp);
             run.kills += 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod system_params {
+    use super::*;
+    use bevy::ecs::system::IntoSystem;
+
+    fn init<M>(world: &mut World, s: impl IntoSystem<(), (), M>) {
+        let mut s = IntoSystem::into_system(s);
+        s.initialize(world);
+    }
+
+    /// Each system's parameters are compatible (no conflicting queries); Bevy checks it here.
+    #[test]
+    fn systems_initialize() {
+        let mut world = World::new();
+        init(&mut world, spawn_waves);
+        init(&mut world, move_enemies);
+        init(&mut world, kill_enemies);
     }
 }

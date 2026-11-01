@@ -214,3 +214,22 @@ mod tests {
         assert!(!card_text(Card::Heal).1.is_empty());
     }
 }
+
+#[cfg(test)]
+mod system_params {
+    use super::*;
+    use bevy::ecs::system::IntoSystem;
+
+    fn init<M>(world: &mut World, s: impl IntoSystem<(), (), M>) {
+        let mut s = IntoSystem::into_system(s);
+        s.initialize(world);
+    }
+
+    /// Each system's parameters are compatible (no conflicting queries); Bevy checks it here.
+    #[test]
+    fn systems_initialize() {
+        let mut world = World::new();
+        init(&mut world, open_cards);
+        init(&mut world, pick_card);
+    }
+}
