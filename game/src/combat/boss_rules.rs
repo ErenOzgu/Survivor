@@ -320,9 +320,12 @@ mod tests {
     fn guard_shows_and_hides_with_a_gap() {
         assert!(!guard_present(41.0, false));
         assert!(guard_present(39.0, false));
-        assert!(guard_present(42.0, true), "no flicker between the two radii");
+        assert!(
+            guard_present(42.0, true),
+            "no flicker between the two radii"
+        );
         assert!(!guard_present(45.0, true));
-        assert!(GUARD_HIDE < crate::content::waves::LEASH);
+        const { assert!(GUARD_HIDE < crate::content::waves::LEASH) };
     }
 
     #[test]
@@ -443,7 +446,10 @@ mod tests {
     #[test]
     fn circles_and_charges_hit_what_they_should() {
         let c = Vec3::new(0.0, 5.0, 0.0);
-        assert!(in_circle(c, 3.0, Vec3::new(3.4, 0.0, 0.0)), "height ignored");
+        assert!(
+            in_circle(c, 3.0, Vec3::new(3.4, 0.0, 0.0)),
+            "height ignored"
+        );
         assert!(!in_circle(c, 3.0, Vec3::new(3.6, 0.0, 0.0)));
         let (dir, end) = charge_path(Vec3::ZERO, Vec3::new(0.0, 0.0, 5.0), 20.0, Vec3::X);
         assert_eq!(dir, Vec3::Z);
@@ -473,7 +479,10 @@ mod tests {
         assert_eq!(screen_direction(Vec3::NEG_Z, 0.0), "önde");
         assert_eq!(screen_direction(Vec3::X, 0.0), "sağda");
         assert_eq!(screen_direction(Vec3::Z, 0.0), "arkada");
-        assert_eq!(screen_direction(Vec3::new(-1.0, 0.0, -1.0), 0.0), "sol önde");
+        assert_eq!(
+            screen_direction(Vec3::new(-1.0, 0.0, -1.0), 0.0),
+            "sol önde"
+        );
         // Turned a quarter to the left, what was on the left is now ahead.
         let quarter = std::f32::consts::FRAC_PI_2;
         assert_eq!(screen_direction(Vec3::NEG_X, quarter), "önde");
@@ -489,7 +498,10 @@ mod tests {
             skills: vec!["Frostbolt III".into()],
         };
         let l = summary_lines(&s).join("\n");
-        assert!(l.contains("10:55") && l.contains("19") && l.contains("812"), "{l}");
+        assert!(
+            l.contains("10:55") && l.contains("19") && l.contains("812"),
+            "{l}"
+        );
         assert!(l.contains("Gnoll Şefi, Gri Pençe") && l.contains("Frostbolt III"));
         let empty = MapSummary {
             bosses: vec![],

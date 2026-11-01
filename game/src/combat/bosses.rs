@@ -40,9 +40,7 @@ impl Plugin for BossesPlugin {
             .init_resource::<BossNotice>()
             .configure_sets(
                 Update,
-                BossSet
-                    .after(CombatSet::Act)
-                    .before(CombatSet::Resolve),
+                BossSet.after(CombatSet::Act).before(CombatSet::Resolve),
             )
             .add_systems(Startup, build_boss_assets)
             .add_systems(
@@ -84,13 +82,6 @@ impl BossRun {
             killed: [false; BOSSES],
             kill_order: Vec::new(),
         }
-    }
-
-    pub fn map_boss_down(&self) -> bool {
-        ELWYNN_BOSSES
-            .iter()
-            .zip(self.killed)
-            .any(|(b, k)| k && b.rank == Rank::MapBoss)
     }
 }
 
@@ -613,7 +604,13 @@ fn tick_telegraphs(
         if let (true, true, AttackShape::Barrage { .. }, TeleShape::Circle { center, radius }) =
             (t.fill, just_landed, atk.shape, t.shape)
         {
-            spawn_flash(&mut commands, &placeholders, SkillId::Fireball, center, radius);
+            spawn_flash(
+                &mut commands,
+                &placeholders,
+                SkillId::Fireball,
+                center,
+                radius,
+            );
             if let Some(hero) = hero {
                 if !boss.hit && in_circle(center, radius, hero) {
                     boss.hit = true;
@@ -700,18 +697,6 @@ mod tests {
         let (x, y) = crate::content::waves::GNOLL_CHIEF_AT;
         assert_eq!(p, Vec3::new(-y, 12.0, -x));
         assert!(guard_spot(&crate::content::bosses::DEFIAS_LEADER_BOSS, 0.0).is_none());
-    }
-
-    #[test]
-    fn boss_run_tracks_the_map_boss() {
-        let mut s = BossRun::new(0.0);
-        assert!(!s.map_boss_down());
-        let idx = ELWYNN_BOSSES
-            .iter()
-            .position(|b| b.rank == Rank::MapBoss)
-            .unwrap();
-        s.killed[idx] = true;
-        assert!(s.map_boss_down());
     }
 
     #[test]

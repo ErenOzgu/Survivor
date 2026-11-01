@@ -111,8 +111,8 @@ fn open_chest(
 fn spin_portals(time: Res<Time<Real>>, mut portals: Query<(&mut Portal, &mut Transform)>) {
     for (mut p, mut xf) in &mut portals {
         p.age += time.delta_secs();
-        xf.rotation = Quat::from_rotation_y(p.age * 0.8)
-            * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+        xf.rotation =
+            Quat::from_rotation_y(p.age * 0.8) * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
         xf.translation.y = p.base_y + 0.25 * (p.age * 2.0).sin();
     }
 }
@@ -227,9 +227,7 @@ fn close_clear_screen(
         return;
     };
     let by_key = keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter, KeyCode::Space]);
-    let by_click = clicks
-        .get(root)
-        .is_ok_and(|i| *i == Interaction::Pressed);
+    let by_click = clicks.get(root).is_ok_and(|i| *i == Interaction::Pressed);
     if !by_key && !by_click {
         return;
     }

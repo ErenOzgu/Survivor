@@ -17,18 +17,17 @@ pub struct BossHudPlugin;
 
 impl Plugin for BossHudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, spawn_boss_hud)
-            .add_systems(
-                Update,
-                (
-                    add_world_bars,
-                    update_world_bars,
-                    update_boss_bar,
-                    update_boss_texts,
-                )
-                    .chain()
-                    .in_set(CombatSet::Ui),
-            );
+        app.add_systems(PostStartup, spawn_boss_hud).add_systems(
+            Update,
+            (
+                add_world_bars,
+                update_world_bars,
+                update_boss_bar,
+                update_boss_texts,
+            )
+                .chain()
+                .in_set(CombatSet::Ui),
+        );
     }
 }
 
