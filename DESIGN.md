@@ -29,10 +29,30 @@ Koşular arası: talent ağacı (haritada kazanılan XP ile) · boss drop'ları 
 
 Skill listeleri, sayılar ve skill'lerin nasıl güçlendiği bu projede tasarlanır (bkz. CLAUDE.md §2).
 
+## İlk sınıf: Mage
+
+Level atlayınca 3 kart çıkar; her kart ya yeni bir skill ya da sahip olunan bir skill'in bir sonraki seviyesidir. Aynı anda en fazla **6 skill** taşınır. Skill'ler kendiliğinden atılır.
+
+| Skill | Ne yapar | Güçlenince |
+|---|---|---|
+| Frostbolt | En yakın düşmana buz oku, yavaşlatır | Daha çok ok, sonra delip geçer |
+| Fireball | Yavaş ama güçlü; çarptığı yerde patlar | Patlama alanı büyür |
+| Arcane Missiles | Rastgele düşmanlara küçük füzeler | Füze sayısı artar |
+| Frost Nova | Etraftaki herkesi dondurur | Daha sık, daha geniş |
+| Blizzard | Rastgele bir yere buz yağmuru | Süresi ve alanı artar |
+| Flamestrike | Yerde yanan alan bırakır | Yanma hasarı artar |
+| Arcane Explosion | Etrafa patlama dalgası | Hasar artar |
+| Blink | Tehlikede kendiliğinden ışınlanır | Bekleme süresi kısalır |
+
+## İlk harita: Elwynn (Goldshire çevresi)
+
+- Normal mob'lar: kobold, kurt, örümcek; zamanla daha kalabalık ve güçlü dalgalar
+- Elit: bir gnoll şefi, sabit bir noktada (ör. Fargodeep Mine girişi)
+- Map boss'u: Defias lideri, zamanlayıcıyla gelir
+
 ## Açık sorular
 
 - Kaç harita, hangi bölgeler?
-- İlk sınıf hangisi olsun?
 - Mini boss'lar map boss'unu etkiliyor mu (örn. hepsi kesilirse boss zayıflar)?
 - Gear slotları ve drop nadirlikleri
 
