@@ -6,17 +6,46 @@ kurallar [CLAUDE.md](CLAUDE.md), tasarım [DESIGN.md](DESIGN.md).
 Oyun, açık kaynak [wenilla/benilla](https://github.com/Arnesen/wenilla) motoru (Rust + Bevy,
 MIT OR Apache-2.0) üzerine kurulu. Sunucu yok; oyun mantığı tamamen istemcide çalışır.
 
-## Durum: Aşama 1 (Temel)
+## Durum: Aşama 2 (Savaş)
 
-- Motor sunucusuz, girişsiz ve arayüzsüz açılır, dünya ayarlanabilir bir başlangıç noktasında
-  (varsayılan: Elwynn Forest, Goldshire'ın hemen dışı) akmaya başlar.
-- Kahraman WASD (veya ok tuşları) ile arazide yürür, yer yüksekliğini takip eder.
-- Kamera kahramanı arkadan-yukarıdan, açılı tepeden izler. Fare tekerleği yakınlaştırır,
-  Q/E kamerayı döndürür.
-- Kahraman gerçek bir WoW 1.12 karakter modeli: varsayılan olarak **Troll kadın Mage**, robe
-  giymiş ve elinde asa. Hareket ederken koşar, dururken bekleme animasyonu oynar, gittiği yöne
-  bakar. Model yüklenene kadar (ya da yüklenemezse) eski yer tutucu görünür: sarı kapsül +
-  baktığı yönü gösteren kırmızı burun. Ayrıntılar: "Modeller" bölümü.
+Aşama 1 (temel) bitti: motor sunucusuz açılır, kahraman WASD ile Goldshire dışında arazide
+yürür, kamera açılı tepeden izler. Kahraman gerçek bir WoW 1.12 karakter modeli (varsayılan
+**Troll kadın Mage**, robe ve asa; ayrıntılar: "Modeller" bölümü). Aşama 2 bunun üstüne
+oynanabilir bir savaş döngüsü kurar:
+
+- **Düşman dalgaları.** Kahramanın etrafında, ekranın hemen dışında kobold, kurt (0:45'ten
+  sonra, sürü halinde) ve örümcek (2:00'den sonra) doğar. Dalgalar zamanla sıklaşır, kalabalıklaşır
+  ve güçlenir. Düşmanlar kahramana koşar, arazide yürür ve **değdikçe** hasar verir.
+- **Mage, otomatik büyü.** Koşu Frostbolt ile başlar. Sahip olunan skill'ler kendi bekleme
+  süreleriyle **kendiliğinden** atılır; menzilde düşman yoksa skill hazır bekler.
+- **XP ve level.** Ölen düşman yeşil bir XP küresi bırakır; yaklaşınca küre kahramana uçar.
+  Level atlayınca oyun durur ve **3 kart** çıkar: ya yeni bir skill ya da sahip olunan bir
+  skill'in bir sonraki seviyesi. En fazla **6 skill**; en üst seviyedeki skill'e kart çıkmaz.
+  Öğrenilecek bir şey kalmazsa "Can iksiri" kartı çıkar.
+- **Ölüm.** Can sıfırlanınca koşu biter: haritanın başına dönülür, level, XP ve skill'ler
+  sıfırlanır (DESIGN.md). Ekranda koşunun özeti birkaç saniye görünür.
+- **HUD.** Üstte XP çubuğu; sol üstte level ve can çubuğu; ortada süre ve öldürülen düşman
+  sayısı; sol altta skill'ler ve seviyeleri.
+- Düşman ve büyü görselleri şimdilik **yer tutucu**: kobold kahverengi kapsül, kurt gri uzun
+  kutu, örümcek koyu mor yassı küre (sarı göz baktığı yönü gösterir); büyüler renkli küre/ok,
+  yer büyüleri yarı saydam diskler. Düşman görünümü tek bir fonksiyonda
+  (`combat/visuals.rs: attach_enemy_visual`) toplandı; gerçek yaratık modellerine
+  (`game/src/models/`) oradan bağlanacak.
+
+### Mage skill'leri
+
+| Skill | Ne yapar | Güçlenince (5 seviye) |
+|---|---|---|
+| Frostbolt | En yakın düşmana buz oku, yavaşlatır | 2, sonra 3 ok; oklar 1, sonra 3 düşmanı deler |
+| Fireball | Yavaş ateş topu, çarptığı yerde patlar | Patlama alanı büyür; 5. seviyede 2 top |
+| Arcane Missiles | Rastgele düşmanlara güdümlü füzeler | 3 → 8 füze |
+| Frost Nova | Etraftakileri dondurur | Daha geniş, daha sık (9 → 5 sn), daha uzun donma |
+| Blizzard | Yakında bir yere buz yağmuru, yavaşlatır | Süre ve alan büyür; 4. seviyede 2 yağmur |
+| Flamestrike | En yakın düşmanın altında yanan alan | Yanma hasarı 4 → 15 |
+| Arcane Explosion | Etrafa patlama dalgası | Hasar 8 → 28 |
+| Blink | Can %35'in altındayken ya da 4+ düşman dibindeyken kendiliğinden ışınlanır, kısa süre hasar almaz | Bekleme 20 → 7 sn |
+
+Bütün sayılar `game/src/content/` altında, bu projenin kendi tasarımı.
 
 ## Dizin yapısı
 
@@ -29,6 +58,16 @@ game/               bizim crate'imiz: `rnsurvivors` binary'si
   src/game.rs       GamePlugin: kahraman, hareket, takip kamerası
   src/motion.rs     saf hareket/kamera matematiği (birim testli)
   src/config.rs     ortam değişkenlerini okuma (birim testli)
+  src/content/      oyun verisi: skill'ler ve seviyeleri, düşmanlar, dalga takvimi
+  src/combat/       CombatPlugin: savaş sistemleri
+    rules.rs        saf kurallar: XP eğrisi, kart çekme, bekleme, hasar, Blink (birim testli)
+    enemies.rs      dalga üretici, kovalama, durum etkileri (donma/yavaşlama), ölüm
+    skills.rs       otomatik büyü, mermiler, güdümlü füzeler, yer alanları
+    hero.rs         can, temas hasarı, ölüm ve koşunun sıfırlanması
+    xp.rs           XP küreleri, toplama, level
+    cards.rs        level atlama kart ekranı
+    hud.rs          can/XP çubuğu, level, süre, skill listesi
+    visuals.rs      yer tutucu görseller (düşman görünümü tek fonksiyonda)
   src/models/       karakter ve yaratık modelleri (oyun mantığından bağımsız katman)
     mod.rs          API: ModelRequest, ModelStatus, ModelAnim, ModelsPlugin
     build.rs        isteği çözer, modeli, iskeleti, paleti ve eşyaları kurar
@@ -85,7 +124,7 @@ Linux'ta ek sistem paketleri gerekir:
 sudo apt-get install libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-config
 ```
 
-Testler (saf hareket/kamera/ayar mantığı):
+Testler (saf hareket/kamera/ayar mantığı, savaş kuralları, oyun verisinin tutarlılığı):
 
 ```bash
 cargo test -p rnsurvivors
@@ -121,9 +160,13 @@ yazılır.
 | W A S D / ok tuşları | Yürü (kameraya göre) |
 | Fare tekerleği | Yakınlaş / uzaklaş |
 | Q / E | Kamerayı döndür |
+| 1 / 2 / 3 (ya da tıkla) | Level atlayınca kart seç |
 | F8 | Kahramanın çevresine test yaratıkları çıkar (bir kez) |
 | F9 | Test yaratıklarının animasyonunu sıradakine geçir (idle → walk → run → cast → attack → hit → death) |
 | F10 | Kahramana büyü atma animasyonu oynat |
+
+Saldırı tuşu yok: skill'ler kendiliğinden atılır. İş, düşmanların arasından sıyrılıp XP
+kürelerini toplamak.
 
 ### Ortam değişkenleri
 
@@ -132,6 +175,9 @@ yazılır.
 | `WOW_DATA` | `C:\Games\WoW-1.12.1\Data` | WoW 1.12.1 `Data` klasörü (motorun değişkeni) |
 | `RNS_START` | `-9464,62` veya `-9464,62,60` | Başlangıç noktası, ham WoW dünya koordinatı `x,y[,z]` (Eastern Kingdoms). `z` verilmezse kahraman zemine oturur. Varsayılan `-9464,62` (Goldshire dışı) |
 | `RNS_SPEED` | `14` | Kahramanın koşu hızı, yard/sn (varsayılan 7) |
+| `RNS_LEVEL` | `10` | Test: koşu bu level'da başlar; aradaki her level için kart ekranı sırayla açılır |
+| `RNS_SKILLS` | `all` veya `frostbolt:3,blizzard,blink:5` | Test: başlangıç skill'leri. `all` = 8 skill'in hepsi en üst seviyede (6 sınırı yok sayılır). Liste: `anahtar[:seviye]`; anahtarlar `frostbolt fireball missiles nova blizzard flamestrike explosion blink` |
+| `RNS_GOD` | `1` | Test: kahraman hasar almaz |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
@@ -206,6 +252,15 @@ Başka ırk denemek: `$env:RNS_HERO_RACE = "undead"; $env:RNS_HERO_SEX = "m"`.
 
 ## Bilinen eksikler
 
+- **Savaş gerçek WoW verisiyle ve ekran kartıyla henüz oynanmadı.** Bulut ortamında ne WoW verisi
+  ne GPU var; yalnızca derleme ve birim testleri yapıldı. Denge (hasar, can, dalga hızı) kâğıt
+  üstünde ayarlandı, ilk oyunda düzeltme isteyecektir.
+- **Arayüz fontu WoW'dan okunur** (`Fonts\ARIALN.TTF`, Türkçe harfleri var). WoW verisi yoksa
+  yazılar görünmez (kutular görünür).
+- Düşmanlar yalnızca arazi yüksekliğini takip eder; binaların ve ağaçların içinden geçer.
+- Elit gnoll şefi ve Defias boss'u veri olarak hazır (`content/enemies.rs`, `content/waves.rs`)
+  ama henüz doğmuyor (Aşama 3). Gnoll şefinin noktası yaklaşık, oyunda kontrol edilecek.
+- Ses yok, hasar sayıları yok, düşman can çubukları yok.
 - **Modeller gerçek veriyle henüz görülmedi.** Bulut ortamında WoW verisi ve GPU yok; burada
   derleme, birim testleri ve verisiz bir açılış denemesi (kapsüle düşüyor) yapıldı. Ekranda doğru
   görünüp görünmediği Windows'ta gerçek `Data` ile denenecek.
