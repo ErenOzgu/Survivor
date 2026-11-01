@@ -33,6 +33,7 @@ impl Plugin for EnemiesPlugin {
 /// One enemy. Its `Transform` is its feet on the terrain.
 #[derive(Component, Debug)]
 pub struct Enemy {
+    #[allow(dead_code)] // read by phase 3 (elite/boss rules) and the models swap
     pub kind: EnemyKind,
     pub health: f32,
     pub speed: f32,
