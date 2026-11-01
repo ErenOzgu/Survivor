@@ -133,7 +133,6 @@ impl ModelAnim {
     }
 
     /// The action currently playing, if any.
-    #[allow(dead_code)] // API for game code
     pub fn action(&self) -> Option<AnimState> {
         self.action
     }

@@ -26,11 +26,13 @@ oynanabilir bir savaş döngüsü kurar:
   sıfırlanır (DESIGN.md). Ekranda koşunun özeti birkaç saniye görünür.
 - **HUD.** Üstte XP çubuğu; sol üstte level ve can çubuğu; ortada süre ve öldürülen düşman
   sayısı; sol altta skill'ler ve seviyeleri.
-- Düşman ve büyü görselleri şimdilik **yer tutucu**: kobold kahverengi kapsül, kurt gri uzun
-  kutu, örümcek koyu mor yassı küre (sarı göz baktığı yönü gösterir); büyüler renkli küre/ok,
-  yer büyüleri yarı saydam diskler. Düşman görünümü tek bir fonksiyonda
-  (`combat/visuals.rs: attach_enemy_visual`) toplandı; gerçek yaratık modellerine
-  (`game/src/models/`) oradan bağlanacak.
+- **Düşmanlar gerçek WoW modelleri.** Kobold, kurt, örümcek (ve gnoll şefi) senin istemcinin
+  tablolarından, model klasörüne göre seçilir (`Creature\Kobold` vb.; seçilen id'ler konsola
+  yazılır). Koşarken koşma, kahramana değerken saldırı, vurulunca sarsılma animasyonu oynar;
+  ölünce ölüm animasyonuyla düşer, biraz yerde kalır, sonra toprağa gömülür. Kahraman büyü
+  attıkça büyü atma animasyonu yapar. Model yüklenene kadar (ya da veri yoksa) eski yer tutucu
+  şekiller görünür: kobold kahverengi kapsül, kurt gri uzun kutu, örümcek mor yassı küre.
+- Büyüler hâlâ **yer tutucu**: renkli küre/ok, yer büyüleri yarı saydam diskler.
 
 ### Mage skill'leri
 
@@ -261,6 +263,10 @@ Başka ırk denemek: `$env:RNS_HERO_RACE = "undead"; $env:RNS_HERO_SEX = "m"`.
 - Elit gnoll şefi ve Defias boss'u veri olarak hazır (`content/enemies.rs`, `content/waves.rs`)
   ama henüz doğmuyor (Aşama 3). Gnoll şefinin noktası yaklaşık, oyunda kontrol edilecek.
 - Ses yok, hasar sayıları yok, düşman can çubukları yok.
+- Defias lideri karakter modelli bir NPC; kendi model klasörü olmadığı için şimdilik yer tutucu
+  (Aşama 3'te bağlanacak).
+- Düşman modelleri WoW'daki boylarında çizilir; vuruş alanları (`content/enemies.rs: radius`)
+  model boyuyla ilk oyunda karşılaştırılmalı.
 - **Modeller gerçek veriyle henüz görülmedi.** Bulut ortamında WoW verisi ve GPU yok; burada
   derleme, birim testleri ve verisiz bir açılış denemesi (kapsüle düşüyor) yapıldı. Ekranda doğru
   görünüp görünmediği Windows'ta gerçek `Data` ile denenecek.

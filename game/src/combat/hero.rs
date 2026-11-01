@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use benilla_assets::coords::wow_to_bevy;
 
-use super::enemies::Enemy;
+use super::enemies::{Corpse, Enemy};
 use super::rules::{self, HERO_MAX_HEALTH, HERO_REGEN};
 use super::skills::{Projectile, SkillTimers, Zone};
 use super::visuals::Flash;
@@ -82,7 +82,8 @@ fn contact_damage(
     let dps: f32 = enemies
         .iter()
         .filter(|(xf, e)| {
-            e.frozen <= 0.0 && rules::flat_dist(xf.translation, hero.translation) <= e.radius + 0.6
+            e.frozen <= 0.0
+                && rules::touching(rules::flat_dist(xf.translation, hero.translation), e.radius)
         })
         .map(|(_, e)| e.dps)
         .sum();
@@ -117,6 +118,7 @@ fn reset_run(
             With<Zone>,
             With<Orb>,
             With<Flash>,
+            With<Corpse>,
         )>,
     >,
 ) {

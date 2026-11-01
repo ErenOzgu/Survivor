@@ -277,6 +277,66 @@ pub fn orb_step(orb: Vec3, hero: Vec3, magnet: f32, dt: f32) -> (Vec3, bool) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Contact and enemy animation.
+
+/// How far past its body an enemy reaches the hero.
+pub const CONTACT_REACH: f32 = 0.6;
+/// Seconds between attack swings of an enemy in contact (the damage itself is continuous).
+pub const ATTACK_EVERY: f32 = 1.1;
+/// A dead enemy's body stays this long, sinking into the ground over the last [`CORPSE_SINK`].
+pub const CORPSE_SECS: f32 = 2.2;
+pub const CORPSE_SINK: f32 = 0.7;
+pub const CORPSE_DEPTH: f32 = 1.5;
+
+/// Whether an enemy `dist` yards from the hero, with body `radius`, touches it.
+pub fn touching(dist: f32, radius: f32) -> bool {
+    dist <= radius + CONTACT_REACH
+}
+
+/// The one-shot animation an enemy plays this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnemyAction {
+    Attack,
+    Hit,
+}
+
+/// Picks an enemy's animation for this frame and its next swing timer. Touching and not frozen,
+/// it swings every [`ATTACK_EVERY`]; just hit and not already playing something, it flinches.
+/// A swing always wins over a flinch.
+pub fn enemy_action(
+    touching: bool,
+    frozen: bool,
+    attack_cd: f32,
+    dt: f32,
+    just_hit: bool,
+    busy: bool,
+) -> (Option<EnemyAction>, f32) {
+    if touching && !frozen {
+        let cd = attack_cd - dt;
+        if cd <= 0.0 {
+            return (Some(EnemyAction::Attack), ATTACK_EVERY);
+        }
+        let flinch = (just_hit && !busy).then_some(EnemyAction::Hit);
+        return (flinch, cd);
+    }
+    // Out of reach the first swing comes quickly once it arrives.
+    let cd = attack_cd.min(ATTACK_EVERY * 0.3);
+    (
+        (just_hit && !busy && !frozen).then_some(EnemyAction::Hit),
+        cd,
+    )
+}
+
+/// How far below the ground a corpse with `left` seconds to go has sunk.
+pub fn corpse_depth(left: f32) -> f32 {
+    if left >= CORPSE_SINK {
+        0.0
+    } else {
+        CORPSE_DEPTH * (1.0 - left.max(0.0) / CORPSE_SINK)
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Debug start (env vars).
 
 /// Parses `RNS_SKILLS`: `all` (every skill at max, past the 6-skill limit, for testing) or a
@@ -546,6 +606,59 @@ mod tests {
         assert!(!got && p.x < 4.0);
         assert!(orb_step(Vec3::X * 1.5, hero, ORB_MAGNET, 0.1).1);
         assert!(orb_step(Vec3::X * 0.5, hero, ORB_MAGNET, 0.0).1);
+    }
+
+    #[test]
+    fn contact_reach() {
+        assert!(touching(1.0, 0.5));
+        assert!(!touching(1.2, 0.5));
+    }
+
+    #[test]
+    fn enemies_swing_on_a_rhythm() {
+        let (a, cd) = enemy_action(true, false, 0.05, 0.1, false, false);
+        assert_eq!((a, cd), (Some(EnemyAction::Attack), ATTACK_EVERY));
+        let (a, cd) = enemy_action(true, false, 1.0, 0.1, false, false);
+        assert_eq!(a, None);
+        assert!((cd - 0.9).abs() < 1e-6);
+        // A swing beats a flinch.
+        assert_eq!(
+            enemy_action(true, false, 0.0, 0.1, true, false).0,
+            Some(EnemyAction::Attack)
+        );
+    }
+
+    #[test]
+    fn frozen_enemies_do_not_swing_or_flinch() {
+        assert_eq!(enemy_action(true, true, 0.0, 0.1, true, false).0, None);
+    }
+
+    #[test]
+    fn flinches_wait_for_the_current_animation() {
+        assert_eq!(
+            enemy_action(false, false, 1.0, 0.1, true, false).0,
+            Some(EnemyAction::Hit)
+        );
+        assert_eq!(enemy_action(false, false, 1.0, 0.1, true, true).0, None);
+        assert_eq!(
+            enemy_action(true, false, 1.0, 0.1, true, false).0,
+            Some(EnemyAction::Hit)
+        );
+    }
+
+    #[test]
+    fn arriving_enemies_swing_soon() {
+        let (_, cd) = enemy_action(false, false, ATTACK_EVERY, 0.1, false, false);
+        assert!(cd <= ATTACK_EVERY * 0.3);
+    }
+
+    #[test]
+    fn corpses_sink_at_the_end() {
+        assert_eq!(corpse_depth(CORPSE_SECS), 0.0);
+        assert_eq!(corpse_depth(CORPSE_SINK), 0.0);
+        assert!((corpse_depth(0.0) - CORPSE_DEPTH).abs() < 1e-6);
+        assert!(corpse_depth(CORPSE_SINK / 2.0) > 0.0);
+        assert!((corpse_depth(-1.0) - CORPSE_DEPTH).abs() < 1e-6);
     }
 
     #[test]
