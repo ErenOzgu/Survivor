@@ -5,6 +5,7 @@
 
 mod config;
 mod game;
+mod models;
 mod motion;
 
 use bevy::prelude::*;
@@ -70,6 +71,8 @@ fn main() -> AppExit {
 
     // The engine's whole plugin group, as the client and the world viewer add it.
     app.add_plugins(benilla_world::world_plugins::WorldPlugins);
+    // Character and creature models on top of the engine (`models`).
+    app.add_plugins(models::ModelsPlugin);
     // The world is always live: there is no session to open or close it.
     app.insert_resource(benilla_world::schedule::WorldLive(true));
 

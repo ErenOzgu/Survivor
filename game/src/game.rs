@@ -80,8 +80,8 @@ fn spawn_hero(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let feet = wow_to_bevy(start.0.wow());
-    // Placeholder body: an unlit capsule standing on its feet, and a nose showing where it faces.
-    // A real WoW model needs the engine's unit/rig lane, which lives in `benilla-app` (phase 2+).
+    // The WoW character model (`crate::models`, Troll female mage unless `RNS_HERO_*` says
+    // otherwise). The capsule and nose below show until it is ready, and stay if it fails.
     let body = materials.add(StandardMaterial {
         base_color: Color::srgb(0.95, 0.75, 0.2),
         unlit: true,
@@ -98,17 +98,22 @@ fn spawn_hero(
             Hero::default(),
             Transform::from_translation(feet),
             Visibility::default(),
+            crate::models::ModelRequest::Character(crate::models::CharacterLook::hero_from_env()),
+            crate::models::AutoLocomotion::default(),
+            crate::models::DebugCenter,
         ))
         .with_children(|p| {
             p.spawn((
                 Mesh3d(meshes.add(Capsule3d::new(0.45, 1.1))),
                 MeshMaterial3d(body),
                 Transform::from_xyz(0.0, 1.0, 0.0),
+                crate::models::ModelPlaceholder,
             ));
             p.spawn((
                 Mesh3d(meshes.add(Cuboid::new(0.25, 0.25, 0.5))),
                 MeshMaterial3d(nose),
                 Transform::from_xyz(0.0, 1.5, -0.5),
+                crate::models::ModelPlaceholder,
             ));
         });
 }
