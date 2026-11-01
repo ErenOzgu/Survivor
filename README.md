@@ -6,7 +6,7 @@ kurallar [CLAUDE.md](CLAUDE.md), tasarım [DESIGN.md](DESIGN.md).
 Oyun, açık kaynak [wenilla/benilla](https://github.com/Arnesen/wenilla) motoru (Rust + Bevy,
 MIT OR Apache-2.0) üzerine kurulu. Sunucu yok; oyun mantığı tamamen istemcide çalışır.
 
-## Durum: Aşama 2 (Savaş)
+## Durum: Aşama 3 (Harita)
 
 Aşama 1 (temel) bitti: motor sunucusuz açılır, kahraman WASD ile Goldshire dışında arazide
 yürür, kamera açılı tepeden izler. Kahraman gerçek bir WoW 1.12 karakter modeli (varsayılan
@@ -47,6 +47,53 @@ oynanabilir bir savaş döngüsü kurar:
 
 Bütün sayılar `game/src/content/` altında, bu projenin kendi tasarımı.
 
+### Aşama 3: Harita (elit, mini boss'lar, map boss'u, portal)
+
+Elwynn haritası artık bir başı ve sonu olan bir koşu:
+
+- **Elit: Gnoll Şefi.** Fargodeep Mine girişinde (`GNOLL_CHIEF_AT`, yaklaşık nokta) bekler.
+  Kahraman 40 yarda yaklaşınca dünyada belirir, 16 yarda girince (ya da ona vurunca) saldırır;
+  uzaklaşırsan ve ona dokunmadıysan yerinde beklemeye devam eder. Sağ üstteki gösterge onun
+  uzaklığını ve ekrana göre yönünü yazar ("Elit Gnoll Şefi: 340 yard, sol önde"). Kesilince
+  büyük bir XP yağmuru bırakır. **Koşu başına bir kez**: kesilen şef ancak yeni koşuda (ölüm ya
+  da portal sonrası) geri gelir.
+- **Mini boss'lar** (bu projenin kendi tasarımı, `content/bosses.rs`):
+  | Ne zaman | Mini boss | Görünüm (şimdilik) | Özel saldırı |
+  |---|---|---|---|
+  | 3:00 | **Kobold Ustabaşı**: yavaş, dayanıklı | büyük turuncu halkalı kobold | *Maden Patlayıcısı*: kahramanın üstüne ve çevresine 3 patlama dairesi |
+  | 6:30 | **Gri Pençe**: sürülerin yaşlı lideri, hızlı | açık mavi halkalı kurt | *Atılış*: kahramana doğru düz bir hatta hızla atılır |
+  Gelmeden 8 saniye önce ekranın ortasında geri sayımlı uyarı çıkar ("Dikkat! Mini boss: …
+  yaklaşıyor… 5"), gelince "… geldi!".
+- **Map boss'u: Defias Lideri.** 10:00'da kendiliğinden gelir (uyarı 9:52'de başlar). Üç özel
+  saldırısı var: *Kara Barut* (5 patlama dairesi), *Kılıç Hücumu* (düz hatta atılış), *Savuruş*
+  (yakındaysan çevresine vuruş).
+- **Özel saldırılar hep işaretlidir:** yerde önce kırmızı bir alan (daire ya da şerit) belirir ve
+  dolmaya başlar; dolunca saldırı iner. İçinden çıkan hasar almaz. Boss saldırı hazırlarken
+  yürümez. Frost Nova boss'ları en fazla 0,8 sn dondurur; donukken saldırı hazırlığı bekler.
+- **Can çubukları:** her elit/boss'un başının üstünde adı ve küçük bir can çubuğu var (saldırı
+  hazırlarken saldırının adı da yazar). Savaşan en önemli boss'un (map boss'u > mini boss >
+  elit) büyük can çubuğu ekranın üstünde.
+- **Boss'un canı kahramanın level'ına göre ölçeklenir:** her boss belli bir level için
+  ayarlandı (şef 7, ustabaşı 9, Gri Pençe 14, Defias Lideri 18); level başına ±%5, en az ×0,75 en
+  fazla ×1,6. Temas hasarı dalgaların hasar çarpanını izler.
+- **Defias Lideri kesilince** yere bir **ganimet sandığı** (altın kutu; dokununca açılır, içi
+  Aşama 4'te dolacak) ve yanında dönen mavi bir **portal** çıkar. Sağ üstteki gösterge portalın
+  yerini gösterir. Portala girince oyun durur ve **"Harita tamamlandı!"** ekranı koşunun
+  özetini gösterir (süre, level, öldürülen düşman, kesilen elit/mini boss'lar, skill'ler).
+  Sonraki harita henüz yok: Enter/Boşluk ya da tıklama ile harita baştan başlar.
+- **Hızlı deneme** (PowerShell; her satır ayrı bir oyun açılışı):
+  ```powershell
+  # Defias Lideri 10 sn sonra; ölmeden, bütün skill'lerle
+  $env:RNS_TIME = "590"; $env:RNS_SKILLS = "all"; $env:RNS_GOD = "1"
+  # Mini boss'lar: 2:52'de ustabaşı uyarısı, 6:22'de Gri Pençe uyarısı
+  $env:RNS_TIME = "172"
+  # Gnoll Şefi: başlangıç noktasını mağara girişinin yanına al
+  $env:RNS_START = "-9780,130"
+  ```
+  Bir değişkeni kaldırmak: `Remove-Item Env:RNS_TIME`.
+- **Açık soru (uygulanmadı):** mini boss'ları kesmek map boss'unu zayıflatsın mı? DESIGN.md'de
+  açık soru olarak duruyor; şimdilik aralarında hiçbir bağ yok.
+
 ## Dizin yapısı
 
 ```
@@ -58,9 +105,15 @@ game/               bizim crate'imiz: `rnsurvivors` binary'si
   src/game.rs       GamePlugin: kahraman, hareket, takip kamerası
   src/motion.rs     saf hareket/kamera matematiği (birim testli)
   src/config.rs     ortam değişkenlerini okuma (birim testli)
-  src/content/      oyun verisi: skill'ler ve seviyeleri, düşmanlar, dalga takvimi
+  src/content/      oyun verisi: skill'ler ve seviyeleri, düşmanlar, dalga takvimi,
+                    boss'lar ve özel saldırıları (bosses.rs)
   src/combat/       CombatPlugin: savaş sistemleri
     rules.rs        saf kurallar: XP eğrisi, kart çekme, bekleme, hasar, Blink (birim testli)
+    boss_rules.rs   saf kurallar: boss zamanları, uyandırma, özel saldırı zamanlaması, boss
+                    ölçeklemesi, uyarı/özet metinleri (birim testli)
+    bosses.rs       elit, mini boss'lar, map boss'u; özel saldırılar ve yerdeki işaretler
+    boss_hud.rs     üst boss çubuğu, başların üstündeki can çubukları, uyarılar, yön göstergesi
+    portal.rs       ganimet sandığı, portal, "Harita tamamlandı" ekranı
     enemies.rs      dalga üretici, kovalama, durum etkileri (donma/yavaşlama), ölüm
     skills.rs       otomatik büyü, mermiler, güdümlü füzeler, yer alanları
     hero.rs         can, temas hasarı, ölüm ve koşunun sıfırlanması
@@ -161,6 +214,7 @@ yazılır.
 | Fare tekerleği | Yakınlaş / uzaklaş |
 | Q / E | Kamerayı döndür |
 | 1 / 2 / 3 (ya da tıkla) | Level atlayınca kart seç |
+| Enter / Boşluk (ya da tıkla) | "Harita tamamlandı" ekranını kapat, haritaya baştan başla |
 | F8 | Kahramanın çevresine test yaratıkları çıkar (bir kez) |
 | F9 | Test yaratıklarının animasyonunu sıradakine geçir (idle → walk → run → cast → attack → hit → death) |
 | F10 | Kahramana büyü atma animasyonu oynat |
@@ -178,6 +232,7 @@ kürelerini toplamak.
 | `RNS_LEVEL` | `10` | Test: koşu bu level'da başlar; aradaki her level için kart ekranı sırayla açılır |
 | `RNS_SKILLS` | `all` veya `frostbolt:3,blizzard,blink:5` | Test: başlangıç skill'leri. `all` = 8 skill'in hepsi en üst seviyede (6 sınırı yok sayılır). Liste: `anahtar[:seviye]`; anahtarlar `frostbolt fireball missiles nova blizzard flamestrike explosion blink` |
 | `RNS_GOD` | `1` | Test: kahraman hasar almaz |
+| `RNS_TIME` | `590` veya `9:50` | Test: koşu saati buradan başlar (saniye ya da `dk:sn`, en fazla 1 saat). Bu andan önceki mini boss'lar atlanır; `590` ile uyarı 2 sn sonra başlar, boss 10 sn sonra (10:00'da) gelir. Dalgalar da o saatin zorluğundadır, `RNS_GOD`, `RNS_LEVEL`, `RNS_SKILLS` ile birlikte kullan. Ölünce ya da portaldan sonra yine bu saatten başlanır |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
@@ -258,9 +313,14 @@ Başka ırk denemek: `$env:RNS_HERO_RACE = "undead"; $env:RNS_HERO_SEX = "m"`.
 - **Arayüz fontu WoW'dan okunur** (`Fonts\ARIALN.TTF`, Türkçe harfleri var). WoW verisi yoksa
   yazılar görünmez (kutular görünür).
 - Düşmanlar yalnızca arazi yüksekliğini takip eder; binaların ve ağaçların içinden geçer.
-- Elit gnoll şefi ve Defias boss'u veri olarak hazır (`content/enemies.rs`, `content/waves.rs`)
-  ama henüz doğmuyor (Aşama 3). Gnoll şefinin noktası yaklaşık, oyunda kontrol edilecek.
-- Ses yok, hasar sayıları yok, düşman can çubukları yok.
+- **Aşama 3 (elit, mini boss'lar, map boss'u, portal) gerçek WoW verisiyle oynanmadı.** Yalnızca
+  derleme ve birim testleri. Gnoll şefinin noktası (`GNOLL_CHIEF_AT`) yaklaşık, oyunda kontrol
+  edilecek; özel saldırıların hasarı ve boss canları kâğıt üstünde ayarlandı.
+- Mini boss'lar şimdilik ödünç aldıkları normal düşmanın görünümünde (kobold, kurt); onları
+  ayıran altlarındaki renkli halka ve başlarındaki ad/can çubuğu. Sandık ve portal da yer tutucu
+  şekiller. Yerdeki işaretler düz diskler; eğimli arazide yer yer toprağa gömülebilir.
+- Boss savaşları sırasında normal dalgalar da sürer.
+- Ses yok, hasar sayıları yok; normal düşmanların can çubuğu yok (yalnızca elit ve boss'larda).
 - **Modeller gerçek veriyle henüz görülmedi.** Bulut ortamında WoW verisi ve GPU yok; burada
   derleme, birim testleri ve verisiz bir açılış denemesi (kapsüle düşüyor) yapıldı. Ekranda doğru
   görünüp görünmediği Windows'ta gerçek `Data` ile denenecek.

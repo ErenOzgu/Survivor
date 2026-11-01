@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use benilla_assets::coords::wow_to_bevy;
 
 use super::enemies::Enemy;
+use super::portal::MapCleared;
 use super::rules::{self, HERO_MAX_HEALTH, HERO_REGEN};
 use super::skills::{Projectile, SkillTimers, Zone};
 use super::visuals::Flash;
@@ -97,11 +98,13 @@ fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
 }
 
 /// Dying returns the hero to the map start with a fresh run: skills, level and XP reset, every
-/// enemy, projectile, area and orb cleared.
+/// enemy, projectile, area and orb cleared. Leaving through the portal (`MapCleared`) does the
+/// same without the death banner (the portal shows its own summary).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn reset_run(
     mut commands: Commands,
     mut died: MessageReader<HeroDied>,
+    mut cleared: MessageReader<MapCleared>,
     start: Res<Start>,
     debug: Res<DebugStart>,
     mut run: ResMut<Run>,
@@ -120,17 +123,21 @@ fn reset_run(
         )>,
     >,
 ) {
-    if died.read().count() == 0 {
+    let died = died.read().count() > 0;
+    let cleared = cleared.read().count() > 0;
+    if !died && !cleared {
         return;
     }
-    let mins = (run.time / 60.0) as u32;
-    let secs = (run.time % 60.0) as u32;
-    notice.text = format!(
-        "Öldün! {mins}:{secs:02} dayandın, level {}, {} düşman. Haritanın başına dönüldü.",
-        run.level, run.kills
-    );
-    notice.left = 5.0;
-    info!("rnsurvivors: {}", notice.text);
+    if died {
+        let mins = (run.time / 60.0) as u32;
+        let secs = (run.time % 60.0) as u32;
+        notice.text = format!(
+            "Öldün! {mins}:{secs:02} dayandın, level {}, {} düşman. Haritanın başına dönüldü.",
+            run.level, run.kills
+        );
+        notice.left = 5.0;
+        info!("rnsurvivors: {}", notice.text);
+    }
 
     for e in &clutter {
         commands.entity(e).try_despawn();

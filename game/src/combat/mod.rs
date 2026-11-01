@@ -1,13 +1,19 @@
 //! Phase 2, "Savaş": waves of enemies, auto-cast skills, XP orbs, level-up cards and the HUD.
+//! Phase 3, "Harita": the elite, mini bosses, the map boss, its loot chest and the portal
+//! (`bosses`, `boss_hud`, `portal`, rules in `boss_rules`).
 //!
 //! The rules live in [`rules`] as pure functions; the modules here are thin ECS systems on top.
 //! Everything waits until the hero stands on streamed ground, and while a level-up card screen
 //! is open the virtual clock is paused, so every system below sees `dt = 0`.
 
+pub mod boss_hud;
+pub mod boss_rules;
+pub mod bosses;
 pub mod cards;
 pub mod enemies;
 pub mod hero;
 pub mod hud;
+pub mod portal;
 pub mod rules;
 pub mod skills;
 pub mod visuals;
@@ -25,6 +31,7 @@ use rules::{Loadout, Rng};
 pub const LEVEL_VAR: &str = "RNS_LEVEL";
 pub const SKILLS_VAR: &str = "RNS_SKILLS";
 pub const GOD_VAR: &str = "RNS_GOD";
+pub const TIME_VAR: &str = "RNS_TIME";
 
 pub struct CombatPlugin;
 
@@ -66,6 +73,9 @@ impl Plugin for CombatPlugin {
                 xp::XpPlugin,
                 cards::CardsPlugin,
                 hud::HudPlugin,
+                bosses::BossesPlugin,
+                boss_hud::BossHudPlugin,
+                portal::PortalPlugin,
             ));
     }
 }
@@ -101,7 +111,7 @@ pub struct Run {
 impl Run {
     pub fn new(debug: &DebugStart) -> Self {
         Self {
-            time: 0.0,
+            time: debug.time,
             level: debug.level,
             xp: 0,
             loadout: debug.loadout.clone(),
@@ -118,6 +128,8 @@ pub struct DebugStart {
     pub loadout: Loadout,
     /// The hero takes no damage.
     pub god: bool,
+    /// The run clock starts here (seconds), to jump to the bosses.
+    pub time: f32,
 }
 
 impl DebugStart {
@@ -133,15 +145,39 @@ impl DebugStart {
             .filter(|l| !l.0.is_empty())
             .unwrap_or_else(Loadout::starting);
         let god = std::env::var(GOD_VAR).as_deref() == Ok("1");
-        if level > 1 || god || loadout != Loadout::starting() {
-            info!("rnsurvivors: debug start — level {level}, skills {loadout:?}, god {god}");
+        let time = std::env::var(TIME_VAR)
+            .ok()
+            .and_then(|v| parse_start_time(&v))
+            .unwrap_or(0.0);
+        if level > 1 || god || time > 0.0 || loadout != Loadout::starting() {
+            info!(
+                "rnsurvivors: debug start — level {level}, skills {loadout:?}, god {god}, \
+                 clock {time}"
+            );
         }
         Self {
             level,
             loadout,
             god,
+            time,
         }
     }
+}
+
+/// `RNS_TIME`: seconds, or `m:ss`, within the first hour.
+pub fn parse_start_time(s: &str) -> Option<f32> {
+    let s = s.trim();
+    let secs = match s.split_once(':') {
+        Some((m, sec)) => {
+            let sec: f32 = sec.trim().parse().ok()?;
+            if !(0.0..60.0).contains(&sec) {
+                return None;
+            }
+            m.trim().parse::<u32>().ok()? as f32 * 60.0 + sec
+        }
+        None => s.parse().ok()?,
+    };
+    (secs.is_finite() && (0.0..=3600.0).contains(&secs)).then_some(secs)
 }
 
 /// The combat's random source.
@@ -175,5 +211,22 @@ fn roman(n: u8) -> &'static str {
         5 => "V",
         6 => "VI",
         _ => "?",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_start_time;
+
+    #[test]
+    fn start_time_parses_seconds_and_minutes() {
+        assert_eq!(parse_start_time("590"), Some(590.0));
+        assert_eq!(parse_start_time(" 9:50 "), Some(590.0));
+        assert_eq!(parse_start_time("2:59.5"), Some(179.5));
+        assert_eq!(parse_start_time("0"), Some(0.0));
+        assert_eq!(parse_start_time("-5"), None);
+        assert_eq!(parse_start_time("4000"), None);
+        assert_eq!(parse_start_time("1:75"), None);
+        assert_eq!(parse_start_time("abc"), None);
     }
 }
