@@ -120,11 +120,11 @@ pub(super) fn spawn_test_creatures(
         return;
     }
     let Some(data) = data else { return };
-    let Some(tables) = data.tables.as_ref() else {
+    if data.tables.is_none() {
         warn!("rnsurvivors: no WoW data, no test creatures");
         spawn.done = true;
         return;
-    };
+    }
     let Ok(center) = centers.single().map(|c| c.translation()) else {
         return;
     };
@@ -136,15 +136,7 @@ pub(super) fn spawn_test_creatures(
         None => DEFAULT_FOLDERS
             .iter()
             .filter_map(|(name, folder)| {
-                let rows = tables.creatures.display_models().filter_map(|(id, _)| {
-                    let m = tables.creatures.model(id)?;
-                    let skinned = m.textures[0].is_some();
-                    Some((id, m.model_path, skinned))
-                });
-                // `model_path` is owned per row, so collect before picking.
-                let rows: Vec<(u32, String, bool)> = rows.collect();
-                let found =
-                    pick_by_folder(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), folder);
+                let found = super::creature_display_in_folder(&data, folder);
                 if found.is_none() {
                     warn!("rnsurvivors: no {name} display found under {folder}");
                 }

@@ -12,6 +12,7 @@ use super::visuals::{spawn_flash, Placeholders};
 use super::{hero_on_ground, CombatRng, CombatSet, Run};
 use crate::content::{SkillId, SkillLevel};
 use crate::game::Hero;
+use crate::models::{AnimState, ModelAnim};
 
 pub struct SkillsPlugin;
 
@@ -78,7 +79,7 @@ struct Target {
     pos: Vec3,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn cast_skills(
     mut commands: Commands,
     time: Res<Time>,
@@ -87,10 +88,10 @@ fn cast_skills(
     mut timers: ResMut<SkillTimers>,
     mut rng: ResMut<CombatRng>,
     mut health: ResMut<HeroHealth>,
-    mut heroes: Query<&mut Transform, (With<Hero>, Without<Enemy>)>,
+    mut heroes: Query<(&mut Transform, Option<&mut ModelAnim>), (With<Hero>, Without<Enemy>)>,
     mut enemies: Query<(Entity, &Transform, &mut Enemy), Without<Hero>>,
 ) {
-    let Ok(mut hero_xf) = heroes.single_mut() else {
+    let Ok((mut hero_xf, mut hero_anim)) = heroes.single_mut() else {
         return;
     };
     let dt = time.delta_secs();
@@ -233,6 +234,14 @@ fn cast_skills(
             }
         };
         timers.0.insert(id, if cast { next } else { 0.0 });
+        // The hero's model casts with the spell, unless it is mid-cast already (Blink is instant).
+        if cast && id != SkillId::Blink {
+            if let Some(anim) = hero_anim.as_mut() {
+                if anim.action().is_none() {
+                    anim.play(AnimState::Cast);
+                }
+            }
+        }
     }
 }
 

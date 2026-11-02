@@ -31,9 +31,26 @@ use bevy::prelude::*;
 pub use anim::{ids as anim_ids, pick_anim_id, AnimState, AutoLocomotion, ModelAnim};
 #[allow(unused_imports)]
 pub use look::{CharacterLook, Gear, GearItem, GearSlot, Race, Sex};
+pub use catalog::ModelData;
 pub use test_spawn::DebugCenter;
 #[allow(unused_imports)]
 pub use test_spawn::TestCreature;
+
+/// The lowest creature display whose model lives in `folder` (e.g. `Creature\\Kobold`) and has a
+/// skin, so it draws textured. `None` without tables or without such a display.
+pub fn creature_display_in_folder(data: &ModelData, folder: &str) -> Option<u32> {
+    let tables = data.tables.as_ref()?;
+    // `model_path` is owned per row, so collect before picking.
+    let rows: Vec<(u32, String, bool)> = tables
+        .creatures
+        .display_models()
+        .filter_map(|(id, _)| {
+            let m = tables.creatures.model(id)?;
+            Some((id, m.model_path, m.textures[0].is_some()))
+        })
+        .collect();
+    test_spawn::pick_by_folder(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), folder)
+}
 
 /// What model an entity wants.
 #[derive(Component, Clone, Debug)]

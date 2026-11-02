@@ -26,11 +26,13 @@ oynanabilir bir savaş döngüsü kurar:
   sıfırlanır (DESIGN.md). Ekranda koşunun özeti birkaç saniye görünür.
 - **HUD.** Üstte XP çubuğu; sol üstte level ve can çubuğu; ortada süre ve öldürülen düşman
   sayısı; sol altta skill'ler ve seviyeleri.
-- Düşman ve büyü görselleri şimdilik **yer tutucu**: kobold kahverengi kapsül, kurt gri uzun
-  kutu, örümcek koyu mor yassı küre (sarı göz baktığı yönü gösterir); büyüler renkli küre/ok,
-  yer büyüleri yarı saydam diskler. Düşman görünümü tek bir fonksiyonda
-  (`combat/visuals.rs: attach_enemy_visual`) toplandı; gerçek yaratık modellerine
-  (`game/src/models/`) oradan bağlanacak.
+- **Düşmanlar gerçek WoW modelleri.** Kobold, kurt, örümcek (ve gnoll şefi) senin istemcinin
+  tablolarından, model klasörüne göre seçilir (`Creature\Kobold` vb.; seçilen id'ler konsola
+  yazılır). Koşarken koşma, kahramana değerken saldırı, vurulunca sarsılma animasyonu oynar;
+  ölünce ölüm animasyonuyla düşer, biraz yerde kalır, sonra toprağa gömülür. Kahraman büyü
+  attıkça büyü atma animasyonu yapar. Model yüklenene kadar (ya da veri yoksa) eski yer tutucu
+  şekiller görünür: kobold kahverengi kapsül, kurt gri uzun kutu, örümcek mor yassı küre.
+- Büyüler hâlâ **yer tutucu**: renkli küre/ok, yer büyüleri yarı saydam diskler.
 
 ### Mage skill'leri
 
@@ -178,6 +180,8 @@ kürelerini toplamak.
 | `RNS_LEVEL` | `10` | Test: koşu bu level'da başlar; aradaki her level için kart ekranı sırayla açılır |
 | `RNS_SKILLS` | `all` veya `frostbolt:3,blizzard,blink:5` | Test: başlangıç skill'leri. `all` = 8 skill'in hepsi en üst seviyede (6 sınırı yok sayılır). Liste: `anahtar[:seviye]`; anahtarlar `frostbolt fireball missiles nova blizzard flamestrike explosion blink` |
 | `RNS_GOD` | `1` | Test: kahraman hasar almaz |
+| `RNS_FLAT` | `1` | Test: arazi yüklenmeyen yerde kahraman düz bir zeminde durur (yeşil zemin + taşlar çizilir). WoW verisi **olmadan** savaşı denemek için |
+| `RNS_FONT` | `C:\Windows\Fonts\arial.ttf` | Test: arayüz yazıları için WoW'unki yerine bu font dosyası (WoW verisi yokken yazılar görünsün diye) |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
@@ -261,6 +265,10 @@ Başka ırk denemek: `$env:RNS_HERO_RACE = "undead"; $env:RNS_HERO_SEX = "m"`.
 - Elit gnoll şefi ve Defias boss'u veri olarak hazır (`content/enemies.rs`, `content/waves.rs`)
   ama henüz doğmuyor (Aşama 3). Gnoll şefinin noktası yaklaşık, oyunda kontrol edilecek.
 - Ses yok, hasar sayıları yok, düşman can çubukları yok.
+- Defias lideri karakter modelli bir NPC; kendi model klasörü olmadığı için şimdilik yer tutucu
+  (Aşama 3'te bağlanacak).
+- Düşman modelleri WoW'daki boylarında çizilir; vuruş alanları (`content/enemies.rs: radius`)
+  model boyuyla ilk oyunda karşılaştırılmalı.
 - **Modeller gerçek veriyle henüz görülmedi.** Bulut ortamında WoW verisi ve GPU yok; burada
   derleme, birim testleri ve verisiz bir açılış denemesi (kapsüle düşüyor) yapıldı. Ekranda doğru
   görünüp görünmediği Windows'ta gerçek `Data` ile denenecek.

@@ -4,10 +4,13 @@
 //! Everything waits until the hero stands on streamed ground, and while a level-up card screen
 //! is open the virtual clock is paused, so every system below sees `dt = 0`.
 
+pub mod art;
 pub mod cards;
 pub mod enemies;
+pub mod flat;
 pub mod hero;
 pub mod hud;
+pub mod plates;
 pub mod rules;
 pub mod skills;
 pub mod visuals;
@@ -66,6 +69,9 @@ impl Plugin for CombatPlugin {
                 xp::XpPlugin,
                 cards::CardsPlugin,
                 hud::HudPlugin,
+                flat::FlatPlugin,
+                art::ArtPlugin,
+                plates::PlatesPlugin,
             ));
     }
 }

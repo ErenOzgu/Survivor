@@ -1,19 +1,34 @@
-//! Placeholder visuals: simple unlit meshes and colours for enemies, projectiles, ground areas,
-//! pulses and orbs. Enemy bodies are made in one place, [`attach_enemy_visual`], so it can later
-//! switch to the real creature models (`crate::models`, being built separately).
+//! Enemy looks and placeholder visuals. Enemies get a real WoW creature model (`crate::models`)
+//! picked by model folder from the player's client tables, with a simple unlit placeholder body
+//! shown until it is ready (and kept when there is no data). Projectiles, ground areas, pulses and
+//! orbs are still placeholder meshes.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 
 use crate::content::{EnemyKind, SkillId};
+use crate::models::{self, AutoLocomotion, ModelAnim, ModelData, ModelPlaceholder, ModelRequest};
+
+const ALL_KINDS: [EnemyKind; 5] = [
+    EnemyKind::Kobold,
+    EnemyKind::Wolf,
+    EnemyKind::Spider,
+    EnemyKind::GnollChief,
+    EnemyKind::DefiasBoss,
+];
 
 pub struct VisualsPlugin;
 
 impl Plugin for VisualsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, build_placeholders)
-            .add_systems(Update, animate_flashes.in_set(super::CombatSet::Act));
+        app.add_systems(PreStartup, build_placeholders).add_systems(
+            Update,
+            (
+                resolve_enemy_displays.in_set(super::CombatSet::Spawn),
+                animate_flashes.in_set(super::CombatSet::Act),
+            ),
+        );
     }
 }
 
@@ -30,6 +45,49 @@ pub struct Placeholders {
     /// A flat disc of radius 1; scale it to an area's radius.
     pub disc: Handle<Mesh>,
     pub orb: (Handle<Mesh>, Handle<StandardMaterial>),
+    /// The creature display each enemy kind is drawn with, once the client tables are read.
+    /// A kind missing here keeps its placeholder body.
+    pub displays: HashMap<EnemyKind, u32>,
+    /// Whether [`Self::displays`] has been filled (or there is no data to fill it from).
+    pub displays_resolved: bool,
+}
+
+/// The model folder an enemy kind's creature display is picked from. The Defias leader is a
+/// character-model NPC with no folder of its own; it keeps its placeholder for now.
+pub fn model_folder(kind: EnemyKind) -> Option<&'static str> {
+    match kind {
+        EnemyKind::Kobold => Some("Creature\\Kobold"),
+        EnemyKind::Wolf => Some("Creature\\Wolf"),
+        EnemyKind::Spider => Some("Creature\\Spider"),
+        EnemyKind::GnollChief => Some("Creature\\Gnoll"),
+        EnemyKind::DefiasBoss => None,
+    }
+}
+
+/// Once the client tables are in, picks a creature display for every enemy kind.
+fn resolve_enemy_displays(mut assets: ResMut<Placeholders>, data: Option<Res<ModelData>>) {
+    if assets.displays_resolved {
+        return;
+    }
+    let Some(data) = data else { return };
+    for kind in ALL_KINDS {
+        let Some(folder) = model_folder(kind) else {
+            continue;
+        };
+        match models::creature_display_in_folder(&data, folder) {
+            Some(id) => {
+                info!("rnsurvivors: {:?} drawn with creature display {id}", kind);
+                assets.displays.insert(kind, id);
+            }
+            None if data.tables.is_some() => {
+                warn!(
+                    "rnsurvivors: no creature display under {folder}, {kind:?} stays a placeholder"
+                );
+            }
+            None => {}
+        }
+    }
+    assets.displays_resolved = true;
 }
 
 fn unlit(color: Color) -> StandardMaterial {
@@ -49,15 +107,8 @@ fn build_placeholders(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let all_kinds = [
-        EnemyKind::Kobold,
-        EnemyKind::Wolf,
-        EnemyKind::Spider,
-        EnemyKind::GnollChief,
-        EnemyKind::DefiasBoss,
-    ];
     let mut enemy = HashMap::new();
-    for kind in all_kinds {
+    for kind in ALL_KINDS {
         let d = kind.def();
         // Body shapes (feet at the origin is handled by the child transform below).
         let mesh = match kind {
@@ -104,11 +155,15 @@ fn build_placeholders(
             meshes.add(Sphere::new(0.22)),
             materials.add(unlit(Color::srgb(0.3, 1.0, 0.45))),
         ),
+        displays: HashMap::new(),
+        displays_resolved: false,
     });
 }
 
-/// Gives a freshly spawned enemy entity its look. The entity's `Transform` is the enemy's feet;
-/// the body is a child. This is the one place to switch to the creature models API.
+/// Gives a freshly spawned enemy entity its look. The entity's `Transform` is the enemy's feet
+/// (the model faces its −Z). It asks for the kind's creature model, which runs, attacks and dies
+/// with the enemy (see `enemies::animate_enemies`); the placeholder body shows until the model
+/// is ready and stays if there is none.
 pub fn attach_enemy_visual(
     commands: &mut Commands,
     enemy: Entity,
@@ -132,13 +187,22 @@ pub fn attach_enemy_visual(
             Mesh3d(mesh),
             MeshMaterial3d(mat),
             Transform::from_xyz(0.0, body_y, 0.0).with_scale(body_scale),
+            ModelPlaceholder,
         ));
         p.spawn((
             Mesh3d(assets.eye.0.clone()),
             MeshMaterial3d(assets.eye.1.clone()),
             Transform::from_translation(eye_at),
+            ModelPlaceholder,
         ));
     });
+    if let Some(&display_id) = assets.displays.get(&kind) {
+        commands.entity(enemy).insert((
+            ModelRequest::Creature { display_id },
+            ModelAnim::default(),
+            AutoLocomotion::default(),
+        ));
+    }
 }
 
 /// A short-lived expanding disc: the visual of a nova, an explosion or a blast.
@@ -200,6 +264,7 @@ mod system_params {
     fn systems_initialize() {
         let mut world = World::new();
         init(&mut world, animate_flashes);
+        init(&mut world, resolve_enemy_displays);
         init(&mut world, build_placeholders);
     }
 }

@@ -1,4 +1,5 @@
-//! Enemies: the wave spawner around the hero, chasing on the terrain, status effects, deaths.
+//! Enemies: the wave spawner around the hero, chasing on the terrain, status effects, their
+//! model's animations, deaths and corpses.
 
 use bevy::prelude::*;
 
@@ -12,6 +13,7 @@ use super::{hero_on_ground, CombatRng, CombatSet, Run};
 use crate::content::waves::{self, LEASH, SPAWN_RING_MAX, SPAWN_RING_MIN};
 use crate::content::EnemyKind;
 use crate::game::Hero;
+use crate::models::{AnimState, ModelAnim, ModelStatus};
 
 pub struct EnemiesPlugin;
 
@@ -24,18 +26,25 @@ impl Plugin for EnemiesPlugin {
             )
             .add_systems(
                 Update,
-                move_enemies.in_set(CombatSet::Act).run_if(hero_on_ground),
+                (move_enemies, animate_enemies)
+                    .chain()
+                    .in_set(CombatSet::Act)
+                    .run_if(hero_on_ground),
             )
-            .add_systems(Update, kill_enemies.in_set(CombatSet::Resolve));
+            .add_systems(
+                Update,
+                (kill_enemies, tick_corpses).in_set(CombatSet::Resolve),
+            );
     }
 }
 
 /// One enemy. Its `Transform` is its feet on the terrain.
 #[derive(Component, Debug)]
 pub struct Enemy {
-    #[allow(dead_code)] // read by phase 3 (elite/boss rules) and the models swap
     pub kind: EnemyKind,
     pub health: f32,
+    /// Health at spawn, for the health bar.
+    pub max_health: f32,
     pub speed: f32,
     /// Contact damage per second, with the wave's multiplier applied.
     pub dps: f32,
@@ -48,6 +57,10 @@ pub struct Enemy {
     pub slow: f32,
     /// Seconds left of the "just hit" pulse.
     pub hit_flash: f32,
+    /// Hit since its animation last looked (a flinch may play).
+    pub just_hit: bool,
+    /// Seconds to its next attack swing while touching the hero.
+    pub attack_cd: f32,
 }
 
 impl Enemy {
@@ -56,6 +69,7 @@ impl Enemy {
         Self {
             kind,
             health: d.health * health_mul,
+            max_health: d.health * health_mul,
             speed: d.speed,
             dps: d.contact_dps * damage_mul,
             radius: d.radius,
@@ -64,6 +78,8 @@ impl Enemy {
             slow_left: 0.0,
             slow: 0.0,
             hit_flash: 0.0,
+            just_hit: false,
+            attack_cd: 0.0,
         }
     }
 
@@ -71,6 +87,7 @@ impl Enemy {
     pub fn hurt(&mut self, damage: f32) {
         self.health = rules::apply_damage(self.health, damage).0;
         self.hit_flash = 0.12;
+        self.just_hit = true;
     }
 
     pub fn chill(&mut self, slow: f32, secs: f32) {
@@ -213,19 +230,92 @@ fn move_enemies(
     }
 }
 
-/// Dead enemies leave an XP orb and are removed.
+/// Enemy models swing while they touch the hero and flinch when hit; walking and running come
+/// from their movement (`AutoLocomotion`).
+fn animate_enemies(
+    time: Res<Time>,
+    heroes: Query<&Transform, (With<Hero>, Without<Enemy>)>,
+    mut enemies: Query<(&Transform, &mut Enemy, Option<&mut ModelAnim>)>,
+) {
+    let Ok(hero) = heroes.single() else {
+        return;
+    };
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+    for (xf, mut e, anim) in &mut enemies {
+        let touching =
+            rules::touching(rules::flat_dist(xf.translation, hero.translation), e.radius);
+        let busy = anim.as_ref().is_some_and(|a| a.action().is_some());
+        let (action, cd) =
+            rules::enemy_action(touching, e.frozen > 0.0, e.attack_cd, dt, e.just_hit, busy);
+        e.attack_cd = cd;
+        e.just_hit = false;
+        if let (Some(action), Some(mut anim)) = (action, anim) {
+            anim.play(match action {
+                rules::EnemyAction::Attack => AnimState::Attack,
+                rules::EnemyAction::Hit => AnimState::Hit,
+            });
+        }
+    }
+}
+
+/// A dead enemy's body: its model plays its death, lies a moment, then sinks away.
+#[derive(Component)]
+pub struct Corpse {
+    left: f32,
+    ground: f32,
+}
+
+/// Dead enemies leave an XP orb. One with a model becomes a [`Corpse`]; a placeholder is removed.
+#[allow(clippy::type_complexity)]
 fn kill_enemies(
     mut commands: Commands,
     mut run: ResMut<Run>,
     assets: Res<Placeholders>,
-    enemies: Query<(Entity, &Transform, &Enemy)>,
+    mut enemies: Query<(
+        Entity,
+        &mut Transform,
+        &Enemy,
+        Option<&ModelStatus>,
+        Option<&mut ModelAnim>,
+    )>,
 ) {
-    for (entity, xf, e) in &enemies {
-        if !e.alive() {
-            commands.entity(entity).try_despawn();
-            spawn_orb(&mut commands, &assets, xf.translation, e.xp);
-            run.kills += 1;
+    for (entity, mut xf, e, status, anim) in &mut enemies {
+        if e.alive() {
+            continue;
         }
+        spawn_orb(&mut commands, &assets, xf.translation, e.xp);
+        run.kills += 1;
+        match (status, anim) {
+            (Some(ModelStatus::Ready), Some(mut anim)) => {
+                anim.state = AnimState::Death;
+                xf.scale = Vec3::ONE;
+                commands.entity(entity).remove::<Enemy>().insert(Corpse {
+                    left: rules::CORPSE_SECS,
+                    ground: xf.translation.y,
+                });
+            }
+            _ => {
+                commands.entity(entity).try_despawn();
+            }
+        }
+    }
+}
+
+fn tick_corpses(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut corpses: Query<(Entity, &mut Corpse, &mut Transform)>,
+) {
+    for (entity, mut c, mut xf) in &mut corpses {
+        c.left -= time.delta_secs();
+        if c.left <= 0.0 {
+            commands.entity(entity).try_despawn();
+            continue;
+        }
+        xf.translation.y = c.ground - rules::corpse_depth(c.left);
     }
 }
 
@@ -246,5 +336,7 @@ mod system_params {
         init(&mut world, spawn_waves);
         init(&mut world, move_enemies);
         init(&mut world, kill_enemies);
+        init(&mut world, animate_enemies);
+        init(&mut world, tick_corpses);
     }
 }
