@@ -10,6 +10,7 @@ use bevy::prelude::*;
 use benilla_assets::{LockRecover, WorldAssets};
 use benilla_formats::{load_spell_catalog, SpellCatalog};
 
+use crate::content::passives::PassiveId;
 use crate::content::SkillId;
 
 pub struct ArtPlugin;
@@ -48,6 +49,8 @@ pub struct WowArt {
     pub skills: HashMap<SkillId, SkillSpell>,
     /// Interface textures by their path constant above.
     pub ui: HashMap<&'static str, Handle<Image>>,
+    /// Passive icons, from the spells named in `content::passives`.
+    pub passives: HashMap<PassiveId, Handle<Image>>,
     /// The spell table, kept for the spell effects.
     pub spells: Option<SpellCatalog>,
 }
@@ -55,6 +58,10 @@ pub struct WowArt {
 impl WowArt {
     pub fn icon(&self, id: SkillId) -> Option<Handle<Image>> {
         self.skills.get(&id).and_then(|s| s.icon.clone())
+    }
+
+    pub fn passive_icon(&self, id: PassiveId) -> Option<Handle<Image>> {
+        self.passives.get(&id).cloned()
     }
 
     pub fn ui(&self, path: &str) -> Option<Handle<Image>> {
@@ -118,8 +125,8 @@ fn load_art(
             return;
         }
     };
-    for id in SkillId::ALL {
-        let name = id.def().name;
+    for id in SkillId::every() {
+        let name = id.def().icon_spell;
         let rows = catalog
             .iter()
             .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref()));
@@ -145,6 +152,22 @@ fn load_art(
                 icon,
             },
         );
+    }
+    for p in PassiveId::ALL {
+        let name = p.def().icon_spell;
+        let rows = catalog
+            .iter()
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref()));
+        let icon = pick_spell(rows, name)
+            .and_then(|sid| catalog.get(sid))
+            .and_then(|d| d.icon.as_deref())
+            .and_then(|path| wa.sprite_texture(path, &mut images));
+        match icon {
+            Some(h) => {
+                art.passives.insert(p, h);
+            }
+            None => warn!("rnsurvivors: no icon for passive {:?} (spell {name:?})", p),
+        }
     }
     art.spells = Some(catalog);
 }

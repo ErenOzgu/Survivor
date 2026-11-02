@@ -15,6 +15,8 @@ pub mod enemies;
 pub mod flat;
 pub mod hero;
 pub mod hud;
+pub mod numbers;
+pub mod pause;
 pub mod plates;
 pub mod portal;
 pub mod rules;
@@ -28,13 +30,14 @@ use benilla_world::schedule::WorldStage;
 
 use crate::content::SkillId;
 use crate::game::Hero;
-use rules::{Loadout, Rng};
+use rules::{Loadout, Passives, Rng};
 
 /// Debug env vars, read once at start-up (see README).
 pub const LEVEL_VAR: &str = "RNS_LEVEL";
 pub const SKILLS_VAR: &str = "RNS_SKILLS";
 pub const GOD_VAR: &str = "RNS_GOD";
 pub const TIME_VAR: &str = "RNS_TIME";
+pub const PASSIVES_VAR: &str = "RNS_PASSIVES";
 
 pub struct CombatPlugin;
 
@@ -82,7 +85,8 @@ impl Plugin for CombatPlugin {
                 bosses::BossesPlugin,
                 boss_hud::BossHudPlugin,
                 portal::PortalPlugin,
-            ));
+            ))
+            .add_plugins((numbers::NumbersPlugin, pause::PausePlugin));
     }
 }
 
@@ -109,6 +113,7 @@ pub struct Run {
     pub level: u32,
     pub xp: u32,
     pub loadout: Loadout,
+    pub passives: Passives,
     pub kills: u32,
     /// Level-ups whose card has not been picked yet.
     pub pending_cards: u32,
@@ -121,6 +126,7 @@ impl Run {
             level: debug.level,
             xp: 0,
             loadout: debug.loadout.clone(),
+            passives: debug.passives.clone(),
             kills: 0,
             pending_cards: debug.level.saturating_sub(1),
         }
@@ -136,6 +142,7 @@ pub struct DebugStart {
     pub god: bool,
     /// The run clock starts here (seconds), to jump to the bosses.
     pub time: f32,
+    pub passives: Passives,
 }
 
 impl DebugStart {
@@ -150,15 +157,24 @@ impl DebugStart {
             .map(|v| rules::parse_skills(&v))
             .filter(|l| !l.0.is_empty())
             .unwrap_or_else(Loadout::starting);
+        let passives = std::env::var(PASSIVES_VAR)
+            .ok()
+            .map(|v| rules::parse_passives(&v))
+            .unwrap_or_default();
         let god = std::env::var(GOD_VAR).as_deref() == Ok("1");
         let time = std::env::var(TIME_VAR)
             .ok()
             .and_then(|v| parse_start_time(&v))
             .unwrap_or(0.0);
-        if level > 1 || god || time > 0.0 || loadout != Loadout::starting() {
+        if level > 1
+            || god
+            || time > 0.0
+            || loadout != Loadout::starting()
+            || !passives.0.is_empty()
+        {
             info!(
-                "rnsurvivors: debug start — level {level}, skills {loadout:?}, god {god}, \
-                 clock {time}"
+                "rnsurvivors: debug start — level {level}, skills {loadout:?}, passives \
+                 {passives:?}, god {god}, clock {time}"
             );
         }
         Self {
@@ -166,6 +182,7 @@ impl DebugStart {
             loadout,
             god,
             time,
+            passives,
         }
     }
 }

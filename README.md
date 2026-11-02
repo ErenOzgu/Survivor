@@ -47,6 +47,41 @@ oynanabilir bir savaş döngüsü kurar:
 | Arcane Explosion | Etrafa patlama dalgası | Hasar 8 → 28 |
 | Blink | Can %35'in altındayken ya da 4+ düşman dibindeyken kendiliğinden ışınlanır, kısa süre hasar almaz | Bekleme 20 → 7 sn |
 
+### Pasif kartlar
+
+Level atlayınca skill'lerin yanında pasif kartlar da çıkar; en fazla **6 pasif**, her biri 5 seviye.
+
+| Pasif | Seviye başına |
+|---|---|
+| Büyü Gücü | Büyü hasarı +%10 |
+| Akış | Bekleme süreleri -%7 |
+| Çeviklik | Koşu hızı +%8 |
+| Dayanıklılık | En yüksek can +20 |
+| Çekim | XP küreleri %30 daha uzaktan gelir |
+| Keskinlik | Kritik şansı +%5 (temel %5; kritik 2 kat vurur) |
+| Bilgelik | Kürelerden %10 fazla XP |
+
+### Evrimler
+
+İki skill de en üst seviyeye gelince bir sonraki level'da **★ EVRİM ★** kartı hep ilk sırada çıkar.
+Birinci skill güçlü haline dönüşür, ikincisi yerinde kalır. Evrimleşen skill bir daha "yeni skill"
+olarak çıkmaz.
+
+| İlk skill | Eş skill | Evrim | Ne yapar |
+|---|---|---|---|
+| Frostbolt V | Frost Nova V | **Kış Okları** | 4 buz oku; her düşmanı delip geçer, vurduğunu dondurur |
+| Fireball V | Flamestrike V | **Pyroblast** | 2 dev ateş topu; geniş patlama ve yerde yanan alan |
+| Arcane Missiles V | Arcane Explosion V | **Arkan Fırtına** | 10 güdümlü füze; her biri çarptığı yerde patlar |
+
+### Savaşın görünümü
+
+- Vurulan düşmanın üstünden **hasar sayıları** yükselir; kritik vuruşlar büyük ve sarı.
+- Yaralı düşmanların üstünde WoW nameplate tarzı **HP çubuğu** var (elit ve boss'ların adlı
+  kendi çubuğu var).
+- Kartlarda ve alttaki skill çubuğunda büyülerin **WoW ikonları** (istemcinin `Spell.dbc`'sinden).
+- **Esc** oyunu durdurur: koşunun özeti (skill'ler, pasifler, toplam güçler), devam / haritayı
+  baştan başlat / çık.
+
 Bütün sayılar `game/src/content/` altında, bu projenin kendi tasarımı.
 
 ### Aşama 3: Harita (elit, mini boss'lar, map boss'u, portal)
@@ -216,6 +251,7 @@ yazılır.
 | Fare tekerleği | Yakınlaş / uzaklaş |
 | Q / E | Kamerayı döndür |
 | 1 / 2 / 3 (ya da tıkla) | Level atlayınca kart seç |
+| Esc | Duraklat / devam (menüde 2: baştan başlat, 3: çık) |
 | Enter / Boşluk (ya da tıkla) | "Harita tamamlandı" ekranını kapat, haritaya baştan başla |
 | F8 | Kahramanın çevresine test yaratıkları çıkar (bir kez) |
 | F9 | Test yaratıklarının animasyonunu sıradakine geçir (idle → walk → run → cast → attack → hit → death) |
@@ -232,8 +268,9 @@ kürelerini toplamak.
 | `RNS_START` | `-9464,62` veya `-9464,62,60` | Başlangıç noktası, ham WoW dünya koordinatı `x,y[,z]` (Eastern Kingdoms). `z` verilmezse kahraman zemine oturur. Varsayılan `-9464,62` (Goldshire dışı) |
 | `RNS_SPEED` | `14` | Kahramanın koşu hızı, yard/sn (varsayılan 7) |
 | `RNS_LEVEL` | `10` | Test: koşu bu level'da başlar; aradaki her level için kart ekranı sırayla açılır |
-| `RNS_SKILLS` | `all` veya `frostbolt:3,blizzard,blink:5` | Test: başlangıç skill'leri. `all` = 8 skill'in hepsi en üst seviyede (6 sınırı yok sayılır). Liste: `anahtar[:seviye]`; anahtarlar `frostbolt fireball missiles nova blizzard flamestrike explosion blink` |
+| `RNS_SKILLS` | `all` veya `frostbolt:3,blizzard,blink:5` | Test: başlangıç skill'leri. `all` = 8 skill'in hepsi en üst seviyede (6 sınırı yok sayılır). Liste: `anahtar[:seviye]`; anahtarlar `frostbolt fireball missiles nova blizzard flamestrike explosion blink`; evrimler `winterbolts pyroblast arcanestorm` |
 | `RNS_GOD` | `1` | Test: kahraman hasar almaz |
+| `RNS_PASSIVES` | `all` veya `power:3,crit:2` | Test: başlangıç pasifleri. Anahtarlar `power haste speed vitality magnet crit wisdom` |
 | `RNS_FLAT` | `1` | Test: arazi yüklenmeyen yerde kahraman düz bir zeminde durur (yeşil zemin + taşlar çizilir). WoW verisi **olmadan** savaşı denemek için |
 | `RNS_FONT` | `C:\Windows\Fonts\arial.ttf` | Test: arayüz yazıları için WoW'unki yerine bu font dosyası (WoW verisi yokken yazılar görünsün diye) |
 | `RNS_TIME` | `590` veya `9:50` | Test: koşu saati buradan başlar (saniye ya da `dk:sn`, en fazla 1 saat). Bu andan önceki mini boss'lar atlanır; `590` ile uyarı 2 sn sonra başlar, boss 10 sn sonra (10:00'da) gelir. Dalgalar da o saatin zorluğundadır, `RNS_GOD`, `RNS_LEVEL`, `RNS_SKILLS` ile birlikte kullan. Ölünce ya da portaldan sonra yine bu saatten başlanır |
@@ -324,7 +361,7 @@ Başka ırk denemek: `$env:RNS_HERO_RACE = "undead"; $env:RNS_HERO_SEX = "m"`.
   ayıran altlarındaki renkli halka ve başlarındaki ad/can çubuğu. Sandık ve portal da yer tutucu
   şekiller. Yerdeki işaretler düz diskler; eğimli arazide yer yer toprağa gömülebilir.
 - Boss savaşları sırasında normal dalgalar da sürer.
-- Ses yok, hasar sayıları yok.
+- Ses yok.
 - Defias lideri karakter modelli bir NPC; kendi model klasörü olmadığı için şimdilik yer tutucu
   (model bağlanınca değişecek).
 - Düşman modelleri WoW'daki boylarında çizilir; vuruş alanları (`content/enemies.rs: radius`)

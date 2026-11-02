@@ -125,7 +125,7 @@ fn build_placeholders(
     }
     let mut solid = HashMap::new();
     let mut glass = HashMap::new();
-    for s in SkillId::ALL {
+    for s in SkillId::every() {
         let c = s.def().color;
         solid.insert(s, materials.add(unlit(rgb(c))));
         glass.insert(

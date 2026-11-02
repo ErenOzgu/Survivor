@@ -1,5 +1,6 @@
 //! Auto-casting: each owned skill fires on its own cooldown, and the things it leaves behind
-//! (projectiles, homing missiles, ground areas, pulses, Blink's jump).
+//! (projectiles, homing missiles, ground areas, pulses, Blink's jump), evolutions included.
+//! Every hit goes through [`strike`]: the passives' damage bonus and critical hits.
 
 use std::collections::HashMap;
 
@@ -7,7 +8,7 @@ use bevy::prelude::*;
 
 use super::enemies::Enemy;
 use super::hero::HeroHealth;
-use super::rules;
+use super::rules::{self, Rng, Stats};
 use super::visuals::{spawn_flash, Placeholders};
 use super::{hero_on_ground, CombatRng, CombatSet, Run};
 use crate::content::{SkillId, SkillLevel};
@@ -36,6 +37,9 @@ pub struct SkillTimers(pub HashMap<SkillId, f32>);
 const CAST_HEIGHT: f32 = 1.1;
 /// A projectile's hit radius, added to the enemy's.
 const PROJ_RADIUS: f32 = 0.35;
+/// Pyroblast's burning ground: its tick damage as a share of the blast, and its size.
+const BURN_SHARE: f32 = 0.15;
+const BURN_RADIUS_SHARE: f32 = 0.8;
 
 #[derive(Component)]
 pub struct Projectile {
@@ -48,17 +52,32 @@ pub struct Projectile {
     pub life: f32,
     /// Already hit (a piercing bolt hits each enemy once).
     pub hit: Vec<Entity>,
-    pub effect: ProjEffect,
+    /// A homing projectile steers to this enemy (re-picked when it dies).
+    pub homing: bool,
+    pub target: Option<Entity>,
+    pub on_hit: OnHit,
 }
 
-#[derive(Clone, Copy)]
-pub enum ProjEffect {
+/// What a projectile does when it hits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OnHit {
+    /// Just damage.
+    Plain,
     /// Slows what it hits: fraction, seconds.
     Chill(f32, f32),
-    /// Explodes on its first hit (or when it runs out), radius.
-    Explode(f32),
-    /// Steers toward this enemy.
-    Home(Option<Entity>),
+    /// Slows and freezes what it hits: fraction, freeze seconds.
+    Freeze(f32, f32),
+    /// Explodes on its first hit (or when it runs out), and may leave burning ground.
+    Explode { radius: f32, burn: Option<Burn> },
+}
+
+/// Burning ground left behind: damage per tick, radius, seconds, tick.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Burn {
+    pub damage: f32,
+    pub radius: f32,
+    pub secs: f32,
+    pub tick: f32,
 }
 
 /// A ground area that ticks damage (and maybe a slow) on what stands in it.
@@ -77,6 +96,38 @@ pub struct Zone {
 struct Target {
     entity: Entity,
     pos: Vec3,
+}
+
+/// One hit on an enemy: the passives' damage bonus and a crit roll.
+pub fn strike(enemy: &mut Enemy, base: f32, stats: &Stats, rng: &mut Rng) {
+    let (dmg, crit) = rules::hit_damage(base, stats, rng.f32());
+    enemy.strike(dmg, crit);
+}
+
+/// How a skill's projectile behaves on hit.
+pub fn on_hit_for(id: SkillId, s: &SkillLevel) -> OnHit {
+    match id {
+        SkillId::Frostbolt => OnHit::Chill(s.slow, s.duration),
+        SkillId::WinterBolts => OnHit::Freeze(s.slow, s.duration),
+        SkillId::Fireball => OnHit::Explode {
+            radius: s.radius,
+            burn: None,
+        },
+        SkillId::Pyroblast => OnHit::Explode {
+            radius: s.radius,
+            burn: Some(Burn {
+                damage: s.damage * BURN_SHARE,
+                radius: s.radius * BURN_RADIUS_SHARE,
+                secs: s.duration,
+                tick: s.tick,
+            }),
+        },
+        SkillId::ArcaneStorm => OnHit::Explode {
+            radius: s.radius,
+            burn: None,
+        },
+        _ => OnHit::Plain,
+    }
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -98,6 +149,7 @@ fn cast_skills(
     if dt <= 0.0 {
         return;
     }
+    let stats = Stats::from_passives(&run.passives);
     let hero = hero_xf.translation;
     // Alive enemies, nearest first.
     let mut targets: Vec<Target> = enemies
@@ -121,23 +173,18 @@ fn cast_skills(
     for &(id, level) in &run.loadout.0 {
         let s = id.level(level);
         let prev = timers.0.get(&id).copied().unwrap_or(0.0);
-        let (next, ready) = rules::tick_cooldown(prev, dt, s.cooldown);
+        let (next, ready) = rules::tick_cooldown(prev, dt, s.cooldown * stats.cooldown_mul);
         if !ready {
             timers.0.insert(id, next);
             continue;
         }
         // A skill with nothing to do waits, ready, instead of wasting its cast.
         let cast = match id {
-            SkillId::Frostbolt | SkillId::Fireball => {
+            SkillId::Frostbolt | SkillId::Fireball | SkillId::WinterBolts | SkillId::Pyroblast => {
                 let in_range = within(s.range);
                 if in_range.is_empty() {
                     false
                 } else {
-                    let effect = if id == SkillId::Frostbolt {
-                        ProjEffect::Chill(s.slow, s.duration)
-                    } else {
-                        ProjEffect::Explode(s.radius)
-                    };
                     for i in 0..s.count as usize {
                         // One bolt per nearest enemy; extras fan out around the nearest.
                         let (t, spread) = match in_range.get(i) {
@@ -146,12 +193,12 @@ fn cast_skills(
                         };
                         let dir = Quat::from_rotation_y(spread)
                             * (t.pos - hero).with_y(0.0).normalize_or(Vec3::NEG_Z);
-                        spawn_projectile(&mut commands, &assets, id, s, hero, dir, effect);
+                        spawn_projectile(&mut commands, &assets, id, s, hero, dir, None);
                     }
                     true
                 }
             }
-            SkillId::ArcaneMissiles => {
+            SkillId::ArcaneMissiles | SkillId::ArcaneStorm => {
                 let in_range = within(s.range);
                 if in_range.is_empty() {
                     false
@@ -161,15 +208,7 @@ fn cast_skills(
                         // Missiles leave in a fan, then curve in.
                         let a = std::f32::consts::TAU * i as f32 / s.count as f32;
                         let dir = Vec3::new(a.cos(), 0.0, a.sin());
-                        spawn_projectile(
-                            &mut commands,
-                            &assets,
-                            id,
-                            s,
-                            hero,
-                            dir,
-                            ProjEffect::Home(Some(t.entity)),
-                        );
+                        spawn_projectile(&mut commands, &assets, id, s, hero, dir, Some(t.entity));
                     }
                     true
                 }
@@ -181,7 +220,7 @@ fn cast_skills(
                 } else {
                     for t in hit {
                         if let Ok((_, _, mut e)) = enemies.get_mut(t.entity) {
-                            e.hurt(s.damage);
+                            strike(&mut e, s.damage, &stats, rng);
                             if id == SkillId::FrostNova {
                                 e.freeze(s.duration);
                             }
@@ -245,6 +284,7 @@ fn cast_skills(
     }
 }
 
+/// A projectile of skill `id`; `target` makes it a homing missile.
 fn spawn_projectile(
     commands: &mut Commands,
     assets: &Placeholders,
@@ -252,18 +292,19 @@ fn spawn_projectile(
     s: &SkillLevel,
     from: Vec3,
     dir: Vec3,
-    effect: ProjEffect,
+    target: Option<Entity>,
 ) {
     let (mesh, scale) = match id {
         SkillId::Frostbolt => (assets.bolt.clone(), 1.0),
+        SkillId::WinterBolts => (assets.bolt.clone(), 1.4),
         SkillId::Fireball => (assets.ball.clone(), 1.3),
+        SkillId::Pyroblast => (assets.ball.clone(), 2.2),
+        SkillId::ArcaneStorm => (assets.ball.clone(), 0.65),
         _ => (assets.ball.clone(), 0.5),
     };
     let at = from + Vec3::Y * CAST_HEIGHT;
-    let life = match effect {
-        ProjEffect::Home(_) => 3.0,
-        _ => s.range / s.speed * 1.4,
-    };
+    let homing = target.is_some();
+    let life = if homing { 3.0 } else { s.range / s.speed * 1.4 };
     commands.spawn((
         Name::new(id.def().name),
         Projectile {
@@ -274,7 +315,9 @@ fn spawn_projectile(
             pierce: s.pierce,
             life,
             hit: Vec::new(),
-            effect,
+            homing,
+            target,
+            on_hit: on_hit_for(id, s),
         },
         Mesh3d(mesh),
         MeshMaterial3d(assets.solid[&id].clone()),
@@ -291,8 +334,10 @@ fn spawn_zone(
     s: &SkillLevel,
     at: Vec3,
 ) {
-    commands.spawn((
-        Name::new(id.def().name),
+    spawn_zone_with(
+        commands,
+        assets,
+        id,
         Zone {
             damage: s.damage,
             radius: s.radius,
@@ -301,18 +346,35 @@ fn spawn_zone(
             life: s.duration,
             slow: s.slow,
         },
+        at,
+    );
+}
+
+fn spawn_zone_with(
+    commands: &mut Commands,
+    assets: &Placeholders,
+    id: SkillId,
+    zone: Zone,
+    at: Vec3,
+) {
+    let r = zone.radius;
+    commands.spawn((
+        Name::new(id.def().name),
+        zone,
         Mesh3d(assets.disc.clone()),
         MeshMaterial3d(assets.glass[&id].clone()),
-        Transform::from_translation(at + Vec3::Y * 0.15)
-            .with_scale(Vec3::new(s.radius, 1.0, s.radius)),
+        Transform::from_translation(at + Vec3::Y * 0.15).with_scale(Vec3::new(r, 1.0, r)),
     ));
 }
 
-/// Projectiles fly, steer (missiles), hit, pierce, slow or explode.
+/// Projectiles fly, steer (missiles), hit, pierce, slow, freeze or explode.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn move_projectiles(
     mut commands: Commands,
     time: Res<Time>,
+    run: Res<Run>,
     assets: Res<Placeholders>,
+    mut rng: ResMut<CombatRng>,
     mut projs: Query<(Entity, &mut Transform, &mut Projectile), Without<Enemy>>,
     mut enemies: Query<(Entity, &Transform, &mut Enemy), Without<Projectile>>,
 ) {
@@ -320,13 +382,16 @@ fn move_projectiles(
     if dt <= 0.0 {
         return;
     }
+    let stats = Stats::from_passives(&run.passives);
+    let rng = &mut rng.0;
     for (pe, mut xf, mut p) in &mut projs {
         p.life -= dt;
         let mut pos = xf.translation;
 
-        if let ProjEffect::Home(target) = p.effect {
+        if p.homing {
             // Lost its target: the nearest live enemy instead.
-            let target = target
+            let target = p
+                .target
                 .filter(|t| enemies.get(*t).is_ok_and(|(_, _, e)| e.alive()))
                 .or_else(|| {
                     enemies
@@ -338,7 +403,7 @@ fn move_projectiles(
                         })
                         .map(|(e, _, _)| e)
                 });
-            p.effect = ProjEffect::Home(target);
+            p.target = target;
             if let Some(Ok((_, txf, _))) = target.map(|t| enemies.get(t)) {
                 let want = (txf.translation + Vec3::Y * CAST_HEIGHT - pos).normalize_or(p.dir);
                 p.dir = p.dir.lerp(want, (6.0 * dt).min(1.0)).normalize_or(want);
@@ -357,13 +422,18 @@ fn move_projectiles(
 
         let mut done = p.life <= 0.0;
         if let Some(target) = hit {
-            match p.effect {
-                ProjEffect::Explode(_) => done = true,
-                _ => {
+            match p.on_hit {
+                OnHit::Explode { .. } => done = true,
+                on_hit => {
                     if let Ok((_, _, mut en)) = enemies.get_mut(target) {
-                        en.hurt(p.damage);
-                        if let ProjEffect::Chill(slow, secs) = p.effect {
-                            en.chill(slow, secs);
+                        strike(&mut en, p.damage, &stats, rng);
+                        match on_hit {
+                            OnHit::Chill(slow, secs) => en.chill(slow, secs),
+                            OnHit::Freeze(slow, secs) => {
+                                en.freeze(secs);
+                                en.chill(slow, secs + 1.0);
+                            }
+                            _ => {}
                         }
                     }
                     p.hit.push(target);
@@ -376,21 +446,32 @@ fn move_projectiles(
             }
         }
         if done {
-            if let ProjEffect::Explode(radius) = p.effect {
+            if let OnHit::Explode { radius, burn } = p.on_hit {
                 for (_, exf, mut en) in &mut enemies {
                     let d = rules::flat_dist(exf.translation, pos);
                     let dmg = rules::blast_damage(p.damage, (d - en.radius).max(0.0), radius);
-                    if dmg > 0.0 {
-                        en.hurt(dmg);
+                    if dmg > 0.0 && en.alive() {
+                        strike(&mut en, dmg, &stats, rng);
                     }
                 }
-                spawn_flash(
-                    &mut commands,
-                    &assets,
-                    p.skill,
-                    pos - Vec3::Y * CAST_HEIGHT,
-                    radius,
-                );
+                let ground = pos - Vec3::Y * CAST_HEIGHT;
+                spawn_flash(&mut commands, &assets, p.skill, ground, radius);
+                if let Some(b) = burn {
+                    spawn_zone_with(
+                        &mut commands,
+                        &assets,
+                        SkillId::Flamestrike,
+                        Zone {
+                            damage: b.damage,
+                            radius: b.radius,
+                            tick: b.tick,
+                            next_tick: b.tick,
+                            life: b.secs,
+                            slow: 0.0,
+                        },
+                        ground,
+                    );
+                }
             }
             commands.entity(pe).try_despawn();
         }
@@ -401,10 +482,14 @@ fn move_projectiles(
 fn tick_zones(
     mut commands: Commands,
     time: Res<Time>,
+    run: Res<Run>,
+    mut rng: ResMut<CombatRng>,
     mut zones: Query<(Entity, &Transform, &mut Zone), Without<Enemy>>,
     mut enemies: Query<(&Transform, &mut Enemy), Without<Zone>>,
 ) {
     let dt = time.delta_secs();
+    let stats = Stats::from_passives(&run.passives);
+    let rng = &mut rng.0;
     for (ze, zxf, mut z) in &mut zones {
         z.life -= dt;
         z.next_tick -= dt;
@@ -414,7 +499,7 @@ fn tick_zones(
                 if e.alive()
                     && rules::flat_dist(exf.translation, zxf.translation) <= z.radius + e.radius
                 {
-                    e.hurt(z.damage);
+                    strike(&mut e, z.damage, &stats, rng);
                     if z.slow > 0.0 {
                         e.chill(z.slow, z.tick + 0.3);
                     }
@@ -423,6 +508,31 @@ fn tick_zones(
         }
         if z.life <= 0.0 {
             commands.entity(ze).try_despawn();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn evolutions_hit_harder_than_their_parents() {
+        assert_eq!(
+            on_hit_for(SkillId::WinterBolts, SkillId::WinterBolts.level(1)),
+            OnHit::Freeze(0.5, 0.9)
+        );
+        match on_hit_for(SkillId::Pyroblast, SkillId::Pyroblast.level(1)) {
+            OnHit::Explode { burn: Some(b), .. } => assert!(b.damage > 0.0 && b.secs > 0.0),
+            other => panic!("{other:?}"),
+        }
+        for (base, _, into) in crate::content::skills::EVOLUTIONS {
+            let top = base.level(base.max_level());
+            let evo = into.level(1);
+            assert!(
+                evo.damage * evo.count as f32 > top.damage * top.count as f32,
+                "{into:?}"
+            );
         }
     }
 }

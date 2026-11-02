@@ -11,7 +11,7 @@ use super::skills::{Projectile, SkillTimers, Zone};
 use super::visuals::Flash;
 use super::xp::Orb;
 use super::{hero_on_ground, CombatSet, DebugStart, HeroDied, Run};
-use crate::game::{Hero, Start};
+use crate::game::{Hero, HeroSpeed, Start};
 
 pub struct HeroPlugin;
 
@@ -21,7 +21,10 @@ impl Plugin for HeroPlugin {
             .init_resource::<DeathNotice>()
             .add_systems(
                 Update,
-                contact_damage.in_set(CombatSet::Act).run_if(hero_on_ground),
+                (apply_stats, contact_damage)
+                    .chain()
+                    .in_set(CombatSet::Act)
+                    .run_if(hero_on_ground),
             )
             .add_systems(
                 Update,
@@ -61,6 +64,26 @@ impl HeroHealth {
 pub struct DeathNotice {
     pub text: String,
     pub left: f32,
+}
+
+/// The passives' hero stats: more maximum health (the gain also heals) and a faster run.
+fn apply_stats(
+    run: Res<Run>,
+    mut health: ResMut<HeroHealth>,
+    mut speed: ResMut<HeroSpeed>,
+    mut base_speed: Local<Option<f32>>,
+) {
+    let stats = rules::Stats::from_passives(&run.passives);
+    if health.max != stats.max_health {
+        let gain = stats.max_health - health.max;
+        health.max = stats.max_health;
+        health.current = (health.current + gain.max(0.0)).min(health.max);
+    }
+    let base = *base_speed.get_or_insert(speed.0);
+    let want = base * stats.speed_mul;
+    if speed.0 != want {
+        speed.0 = want;
+    }
 }
 
 /// Touching enemies hurt every second they touch; the hero regenerates slowly.
@@ -169,6 +192,7 @@ mod system_params {
     fn systems_initialize() {
         let mut world = World::new();
         init(&mut world, contact_damage);
+        init(&mut world, apply_stats);
         init(&mut world, check_death);
         init(&mut world, reset_run);
     }

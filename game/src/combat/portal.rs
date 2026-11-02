@@ -123,6 +123,12 @@ pub struct ClearScreen {
     open: Option<Entity>,
 }
 
+impl ClearScreen {
+    pub fn is_open(&self) -> bool {
+        self.open.is_some()
+    }
+}
+
 /// Stepping into the portal: summary screen up, game paused, and the map starts over.
 #[allow(clippy::too_many_arguments)]
 fn enter_portal(

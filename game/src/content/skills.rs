@@ -1,4 +1,5 @@
-//! The Mage's eight skills (DESIGN.md "İlk sınıf: Mage"), each with its levels.
+//! The Mage's eight skills (DESIGN.md "İlk sınıf: Mage"), each with its levels, and their three
+//! evolutions: two skills at their last level fuse one of them into a stronger form.
 //!
 //! A level lists the skill's full stats at that level, not a delta, so the table reads as what the
 //! player gets. Fields a skill does not use stay at their [`SkillLevel::BASE`] value.
@@ -16,7 +17,25 @@ pub enum SkillId {
     Flamestrike,
     ArcaneExplosion,
     Blink,
+    /// Evolution of Frostbolt with Frost Nova.
+    WinterBolts,
+    /// Evolution of Fireball with Flamestrike.
+    Pyroblast,
+    /// Evolution of Arcane Missiles with Arcane Explosion.
+    ArcaneStorm,
 }
+
+/// The evolutions: `(skill that evolves, partner, what it becomes)`. Both at their last level
+/// offer the evolution card; the first skill is replaced, the partner stays.
+pub const EVOLUTIONS: [(SkillId, SkillId, SkillId); 3] = [
+    (SkillId::Frostbolt, SkillId::FrostNova, SkillId::WinterBolts),
+    (SkillId::Fireball, SkillId::Flamestrike, SkillId::Pyroblast),
+    (
+        SkillId::ArcaneMissiles,
+        SkillId::ArcaneExplosion,
+        SkillId::ArcaneStorm,
+    ),
+];
 
 impl SkillId {
     pub const ALL: [SkillId; 8] = [
@@ -30,6 +49,30 @@ impl SkillId {
         SkillId::Blink,
     ];
 
+    /// The evolved forms, never offered as a new skill.
+    pub const EVOLVED: [SkillId; 3] = [
+        SkillId::WinterBolts,
+        SkillId::Pyroblast,
+        SkillId::ArcaneStorm,
+    ];
+
+    /// Every skill, base and evolved.
+    pub fn every() -> impl Iterator<Item = SkillId> {
+        Self::ALL.into_iter().chain(Self::EVOLVED)
+    }
+
+    pub fn is_evolved(self) -> bool {
+        Self::EVOLVED.contains(&self)
+    }
+
+    /// The evolution this base skill can become, with its partner.
+    pub fn evolution(self) -> Option<(SkillId, SkillId)> {
+        EVOLUTIONS
+            .iter()
+            .find(|(b, _, _)| *b == self)
+            .map(|(_, p, into)| (*p, *into))
+    }
+
     pub fn def(self) -> &'static SkillDef {
         match self {
             SkillId::Frostbolt => &FROSTBOLT,
@@ -40,6 +83,9 @@ impl SkillId {
             SkillId::Flamestrike => &FLAMESTRIKE,
             SkillId::ArcaneExplosion => &ARCANE_EXPLOSION,
             SkillId::Blink => &BLINK,
+            SkillId::WinterBolts => &WINTER_BOLTS,
+            SkillId::Pyroblast => &PYROBLAST,
+            SkillId::ArcaneStorm => &ARCANE_STORM,
         }
     }
 
@@ -66,20 +112,26 @@ impl SkillId {
             SkillId::Flamestrike => "flamestrike",
             SkillId::ArcaneExplosion => "explosion",
             SkillId::Blink => "blink",
+            SkillId::WinterBolts => "winterbolts",
+            SkillId::Pyroblast => "pyroblast",
+            SkillId::ArcaneStorm => "arcanestorm",
         }
     }
 
     pub fn from_key(key: &str) -> Option<SkillId> {
         let key = key.trim().to_ascii_lowercase();
-        SkillId::ALL.into_iter().find(|s| s.key() == key)
+        SkillId::every().find(|s| s.key() == key)
     }
 }
 
 /// One skill: its name, what it does, and its levels.
 #[derive(Debug)]
 pub struct SkillDef {
-    /// The WoW spell name (kept in English, as in the game).
+    /// The name shown: the WoW spell name for a base skill (kept in English, as in the game),
+    /// our own for an evolution.
     pub name: &'static str,
+    /// The WoW spell whose icon (and later effects) this skill borrows, by name in `Spell.dbc`.
+    pub icon_spell: &'static str,
     /// What the skill does, in Turkish, for the card of a new skill.
     pub desc: &'static str,
     /// Card text for reaching each level, in Turkish; `[0]` is level 1 (same as `desc`).
@@ -144,6 +196,7 @@ const FB: SkillLevel = SkillLevel {
 };
 pub static FROSTBOLT: SkillDef = SkillDef {
     name: "Frostbolt",
+    icon_spell: "Frostbolt",
     desc: "En yakın düşmana buz oku atar ve onu yavaşlatır.",
     level_text: &[
         "En yakın düşmana buz oku atar ve onu yavaşlatır.",
@@ -195,6 +248,7 @@ const FI: SkillLevel = SkillLevel {
 };
 pub static FIREBALL: SkillDef = SkillDef {
     name: "Fireball",
+    icon_spell: "Fireball",
     desc: "Yavaş ama güçlü bir ateş topu; çarptığı yerde patlar.",
     level_text: &[
         "Yavaş ama güçlü bir ateş topu; çarptığı yerde patlar.",
@@ -244,6 +298,7 @@ const AM: SkillLevel = SkillLevel {
 };
 pub static ARCANE_MISSILES: SkillDef = SkillDef {
     name: "Arcane Missiles",
+    icon_spell: "Arcane Missiles",
     desc: "Rastgele düşmanlara güdümlü küçük füzeler fırlatır.",
     level_text: &[
         "Rastgele düşmanlara güdümlü küçük füzeler fırlatır.",
@@ -286,6 +341,7 @@ const FN: SkillLevel = SkillLevel {
 };
 pub static FROST_NOVA: SkillDef = SkillDef {
     name: "Frost Nova",
+    icon_spell: "Frost Nova",
     desc: "Etraftaki bütün düşmanları kısa süre dondurur.",
     level_text: &[
         "Etraftaki bütün düşmanları kısa süre dondurur.",
@@ -337,6 +393,7 @@ const BZ: SkillLevel = SkillLevel {
 };
 pub static BLIZZARD: SkillDef = SkillDef {
     name: "Blizzard",
+    icon_spell: "Blizzard",
     desc: "Yakında rastgele bir yere buz yağdırır; içindekileri yavaşlatır.",
     level_text: &[
         "Yakında rastgele bir yere buz yağdırır; içindekileri yavaşlatır.",
@@ -388,6 +445,7 @@ const FS: SkillLevel = SkillLevel {
 };
 pub static FLAMESTRIKE: SkillDef = SkillDef {
     name: "Flamestrike",
+    icon_spell: "Flamestrike",
     desc: "En yakın düşmanın altında yanan bir alan bırakır.",
     level_text: &[
         "En yakın düşmanın altında yanan bir alan bırakır.",
@@ -430,6 +488,7 @@ const AE: SkillLevel = SkillLevel {
 };
 pub static ARCANE_EXPLOSION: SkillDef = SkillDef {
     name: "Arcane Explosion",
+    icon_spell: "Arcane Explosion",
     desc: "Etrafa bir patlama dalgası yayar.",
     level_text: &[
         "Etrafa bir patlama dalgası yayar.",
@@ -474,6 +533,7 @@ const BL: SkillLevel = SkillLevel {
 };
 pub static BLINK: SkillDef = SkillDef {
     name: "Blink",
+    icon_spell: "Blink",
     desc: "Tehlikede (az can ya da etrafın sarılınca) kendiliğinden ışınlanır.",
     level_text: &[
         "Tehlikede (az can ya da etrafın sarılınca) kendiliğinden ışınlanır.",
@@ -508,13 +568,93 @@ pub static BLINK: SkillDef = SkillDef {
     color: [0.8, 0.5, 1.0],
 };
 
+// --- Evolutions (one level each; the card says what they keep from both parents). ---
+
+pub static WINTER_BOLTS: SkillDef = SkillDef {
+    name: "Kış Okları",
+    icon_spell: "Cone of Cold",
+    desc: "Frostbolt ile Frost Nova birleşir: her düşmanı delip geçen, vurduğunu donduran buz okları.",
+    level_text: &["Frostbolt ile Frost Nova birleşir: her düşmanı delip geçen, vurduğunu donduran buz okları."],
+    levels: &[SkillLevel {
+        damage: 30.0,
+        cooldown: 0.9,
+        count: 4,
+        pierce: 99,
+        duration: 0.9,
+        slow: 0.5,
+        range: 20.0,
+        speed: 28.0,
+        ..B
+    }],
+    color: [0.6, 0.95, 1.0],
+};
+
+pub static PYROBLAST: SkillDef = SkillDef {
+    name: "Pyroblast",
+    icon_spell: "Pyroblast",
+    desc: "Fireball ile Flamestrike birleşir: dev ateş topları patlar ve yeri yakar.",
+    level_text: &["Fireball ile Flamestrike birleşir: dev ateş topları patlar ve yeri yakar."],
+    levels: &[SkillLevel {
+        damage: 90.0,
+        cooldown: 2.2,
+        count: 2,
+        radius: 6.5,
+        duration: 4.0,
+        tick: 0.5,
+        range: 22.0,
+        speed: 16.0,
+        ..B
+    }],
+    color: [1.0, 0.35, 0.0],
+};
+
+pub static ARCANE_STORM: SkillDef = SkillDef {
+    name: "Arkan Fırtına",
+    icon_spell: "Evocation",
+    desc:
+        "Arcane Missiles ile Arcane Explosion birleşir: çarptığı yerde patlayan bir füze sağanağı.",
+    level_text: &[
+        "Arcane Missiles ile Arcane Explosion birleşir: çarptığı yerde patlayan bir füze sağanağı.",
+    ],
+    levels: &[SkillLevel {
+        damage: 12.0,
+        cooldown: 1.2,
+        count: 10,
+        radius: 2.5,
+        range: 18.0,
+        speed: 18.0,
+        ..B
+    }],
+    color: [1.0, 0.5, 1.0],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn evolutions_pair_base_skills_once() {
+        let mut used = Vec::new();
+        for (b, p, into) in EVOLUTIONS {
+            assert!(
+                SkillId::ALL.contains(&b) && SkillId::ALL.contains(&p),
+                "{b:?}"
+            );
+            assert!(into.is_evolved() && !b.is_evolved());
+            assert!(
+                !used.contains(&b) && !used.contains(&p),
+                "a skill in two evolutions"
+            );
+            used.extend([b, p]);
+            assert_eq!(b.evolution(), Some((p, into)));
+            assert_eq!(into.max_level(), 1);
+        }
+        assert_eq!(SkillId::Blink.evolution(), None);
+    }
+
+    #[test]
     fn every_skill_has_text_for_every_level() {
-        for s in SkillId::ALL {
+        for s in SkillId::every() {
             let d = s.def();
             assert!(!d.levels.is_empty(), "{s:?}");
             assert_eq!(d.levels.len(), d.level_text.len(), "{s:?}");
@@ -559,10 +699,10 @@ mod tests {
 
     #[test]
     fn keys_round_trip() {
-        for s in SkillId::ALL {
+        for s in SkillId::every() {
             assert_eq!(SkillId::from_key(s.key()), Some(s));
         }
         assert_eq!(SkillId::from_key(" Blink "), Some(SkillId::Blink));
-        assert_eq!(SkillId::from_key("pyroblast"), None);
+        assert_eq!(SkillId::from_key("polymorph"), None);
     }
 }

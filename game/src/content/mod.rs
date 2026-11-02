@@ -5,6 +5,7 @@
 
 pub mod bosses;
 pub mod enemies;
+pub mod passives;
 pub mod skills;
 pub mod waves;
 

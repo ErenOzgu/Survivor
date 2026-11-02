@@ -61,6 +61,9 @@ pub struct Enemy {
     pub just_hit: bool,
     /// Seconds to its next attack swing while touching the hero.
     pub attack_cd: f32,
+    /// Damage taken this frame (for the damage numbers), and whether any of it was a crit.
+    pub took: f32,
+    pub took_crit: bool,
 }
 
 impl Enemy {
@@ -80,12 +83,21 @@ impl Enemy {
             hit_flash: 0.0,
             just_hit: false,
             attack_cd: 0.0,
+            took: 0.0,
+            took_crit: false,
         }
     }
 
-    /// Takes a hit (death is resolved later in the frame).
-    pub fn hurt(&mut self, damage: f32) {
+    /// Takes a hit, maybe a critical one (death is resolved later in the frame); the damage
+    /// shows as a number.
+    pub fn strike(&mut self, damage: f32, crit: bool) {
+        if !self.alive() {
+            return;
+        }
+        let before = self.health;
         self.health = rules::apply_damage(self.health, damage).0;
+        self.took += before - self.health;
+        self.took_crit |= crit;
         self.hit_flash = 0.12;
         self.just_hit = true;
     }
@@ -270,7 +282,7 @@ pub struct Corpse {
 
 /// Dead enemies leave an XP orb. One with a model becomes a [`Corpse`]; a placeholder is removed.
 #[allow(clippy::type_complexity)]
-fn kill_enemies(
+pub(super) fn kill_enemies(
     mut commands: Commands,
     mut run: ResMut<Run>,
     assets: Res<Placeholders>,
