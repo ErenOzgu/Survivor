@@ -41,9 +41,10 @@ impl Plugin for EnemiesPlugin {
 /// One enemy. Its `Transform` is its feet on the terrain.
 #[derive(Component, Debug)]
 pub struct Enemy {
-    #[allow(dead_code)] // read by phase 3 (elite/boss rules)
     pub kind: EnemyKind,
     pub health: f32,
+    /// Health at spawn, for the health bar.
+    pub max_health: f32,
     pub speed: f32,
     /// Contact damage per second, with the wave's multiplier applied.
     pub dps: f32,
@@ -68,6 +69,7 @@ impl Enemy {
         Self {
             kind,
             health: d.health * health_mul,
+            max_health: d.health * health_mul,
             speed: d.speed,
             dps: d.contact_dps * damage_mul,
             radius: d.radius,

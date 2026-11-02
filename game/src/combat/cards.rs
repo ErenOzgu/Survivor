@@ -1,7 +1,10 @@
 //! The level-up screen: the game pauses and shows up to three cards; 1/2/3 or a click picks one.
+//! Each card carries the spell's own WoW icon on a WoW dialog background (plain colours without
+//! data).
 
 use bevy::prelude::*;
 
+use super::art::{WowArt, DIALOG_BACKGROUND};
 use super::hero::HeroHealth;
 use super::hud::UiFont;
 use super::rules::{self, Card, CARDS, HEAL_CARD};
@@ -13,7 +16,7 @@ impl Plugin for CardsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CardScreen>().add_systems(
             Update,
-            (pick_card, open_cards.run_if(hero_on_ground))
+            (pick_card, open_cards.run_if(hero_on_ground), hover_cards)
                 .chain()
                 .in_set(CombatSet::Ui),
         );
@@ -59,6 +62,33 @@ pub fn card_text(card: Card) -> (String, String) {
     }
 }
 
+/// The small line above a card's title: what kind of pick it is.
+pub fn card_tag(card: Card) -> String {
+    match card {
+        Card::New(_) => "YENİ SKILL".to_string(),
+        Card::Upgrade(_, to) => format!("SEVİYE {} → {to}", to - 1),
+        Card::Heal => "İKSİR".to_string(),
+    }
+}
+
+/// Level pips for a card: `(level after the pick, max level)`; none for a heal.
+pub fn card_pips(card: Card) -> Option<(u8, u8)> {
+    match card {
+        Card::New(id) => Some((1, id.max_level())),
+        Card::Upgrade(id, to) => Some((to, id.max_level())),
+        Card::Heal => None,
+    }
+}
+
+fn card_skill(card: Card) -> Option<crate::content::SkillId> {
+    match card {
+        Card::New(id) | Card::Upgrade(id, _) => Some(id),
+        Card::Heal => None,
+    }
+}
+
+const GOLD: Color = Color::srgb(1.0, 0.82, 0.0);
+
 fn card_color(card: Card) -> Color {
     let c = match card {
         Card::New(id) | Card::Upgrade(id, _) => id.def().color,
@@ -74,6 +104,7 @@ fn open_cards(
     mut clock: ResMut<Time<Virtual>>,
     run: Res<Run>,
     font: Res<UiFont>,
+    art: Res<WowArt>,
 ) {
     if screen.is_open() || run.pending_cards == 0 {
         return;
@@ -115,35 +146,7 @@ fn open_cards(
             })
             .with_children(|row| {
                 for (i, card) in cards.iter().enumerate() {
-                    let (title, body) = card_text(*card);
-                    row.spawn((
-                        CardButton(i),
-                        Button,
-                        Node {
-                            width: Val::Px(280.0),
-                            min_height: Val::Px(190.0),
-                            flex_direction: FlexDirection::Column,
-                            row_gap: Val::Px(10.0),
-                            padding: UiRect::all(Val::Px(14.0)),
-                            border: UiRect::all(Val::Px(3.0)),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.08, 0.08, 0.12, 0.95)),
-                        BorderColor::all(card_color(*card)),
-                    ))
-                    .with_children(|c| {
-                        c.spawn((
-                            Text::new(format!("{}", i + 1)),
-                            font.text(18.0),
-                            TextColor(Color::srgb(0.7, 0.7, 0.7)),
-                        ));
-                        c.spawn((
-                            Text::new(title),
-                            font.text(24.0),
-                            TextColor(card_color(*card)),
-                        ));
-                        c.spawn((Text::new(body), font.text(18.0), TextColor(Color::WHITE)));
-                    });
+                    spawn_card(row, i, *card, &font, &art);
                 }
             });
             p.spawn((
@@ -154,6 +157,134 @@ fn open_cards(
         })
         .id();
     screen.open = Some((root, cards));
+}
+
+/// One card: key number, icon, kind, name, what it does, level pips.
+fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFont, art: &WowArt) {
+    let (title, body) = card_text(card);
+    let title = match card {
+        Card::New(id) | Card::Upgrade(id, _) => id.def().name.to_string(),
+        Card::Heal => title,
+    };
+    let color = card_color(card);
+    let mut root = row.spawn((
+        CardButton(i),
+        Button,
+        Node {
+            width: Val::Px(260.0),
+            min_height: Val::Px(320.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(8.0),
+            padding: UiRect::all(Val::Px(14.0)),
+            border: UiRect::all(Val::Px(3.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.06, 0.06, 0.09, 0.96)),
+        BorderColor::all(GOLD.with_alpha(0.7)),
+    ));
+    if let Some(bg) = art.ui(DIALOG_BACKGROUND) {
+        root.insert(ImageNode::new(bg).with_mode(NodeImageMode::Tiled {
+            tile_x: true,
+            tile_y: true,
+            stretch_value: 1.0,
+        }));
+    }
+    root.with_children(|c| {
+        c.spawn((
+            Text::new(format!("{}", i + 1)),
+            font.text(18.0),
+            TextColor(Color::srgb(0.75, 0.75, 0.75)),
+        ));
+        // The icon in a gold frame; a coloured square with the initial without data.
+        let icon = card_skill(card).and_then(|id| art.icon(id));
+        c.spawn((
+            Node {
+                width: Val::Px(72.0),
+                height: Val::Px(72.0),
+                border: UiRect::all(Val::Px(2.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BorderColor::all(GOLD),
+            BackgroundColor(color.with_alpha(0.35)),
+        ))
+        .with_children(|f| match icon {
+            Some(img) => {
+                f.spawn((
+                    ImageNode::new(img),
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        ..default()
+                    },
+                ));
+            }
+            None => {
+                f.spawn((
+                    Text::new(title.chars().next().unwrap_or('?').to_string()),
+                    font.text(40.0),
+                    TextColor(Color::WHITE),
+                ));
+            }
+        });
+        let tag_color = match card {
+            Card::New(_) => Color::srgb(0.3, 1.0, 0.3),
+            _ => GOLD,
+        };
+        c.spawn((
+            Text::new(card_tag(card)),
+            font.text(15.0),
+            TextColor(tag_color),
+        ));
+        c.spawn((Text::new(title), font.text(26.0), TextColor(color)));
+        c.spawn((
+            Text::new(body),
+            font.text(17.0),
+            TextColor(Color::srgb(0.95, 0.95, 0.9)),
+            TextLayout::new_with_justify(Justify::Center),
+        ));
+        if let Some((lvl, max)) = card_pips(card) {
+            c.spawn(Node {
+                column_gap: Val::Px(5.0),
+                margin: UiRect::top(Val::Auto),
+                ..default()
+            })
+            .with_children(|pips| {
+                for n in 1..=max {
+                    let fill = if n < lvl {
+                        GOLD.with_alpha(0.8)
+                    } else if n == lvl {
+                        Color::srgb(0.3, 1.0, 0.3)
+                    } else {
+                        Color::srgba(1.0, 1.0, 1.0, 0.12)
+                    };
+                    pips.spawn((
+                        Node {
+                            width: Val::Px(16.0),
+                            height: Val::Px(8.0),
+                            ..default()
+                        },
+                        BackgroundColor(fill),
+                    ));
+                }
+            });
+        }
+    });
+}
+
+/// A hovered card lights its frame.
+#[allow(clippy::type_complexity)]
+fn hover_cards(
+    mut cards: Query<(&Interaction, &mut BorderColor), (Changed<Interaction>, With<CardButton>)>,
+) {
+    for (i, mut b) in &mut cards {
+        *b = BorderColor::all(match i {
+            Interaction::Hovered | Interaction::Pressed => Color::WHITE,
+            Interaction::None => GOLD.with_alpha(0.7),
+        });
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -213,6 +344,15 @@ mod tests {
         }
         assert!(!card_text(Card::Heal).1.is_empty());
     }
+
+    #[test]
+    fn tags_and_pips() {
+        let s = SkillId::Fireball;
+        assert_eq!(card_tag(Card::Upgrade(s, 3)), "SEVİYE 2 → 3");
+        assert_eq!(card_pips(Card::Upgrade(s, 3)), Some((3, s.max_level())));
+        assert_eq!(card_pips(Card::New(s)), Some((1, s.max_level())));
+        assert_eq!(card_pips(Card::Heal), None);
+    }
 }
 
 #[cfg(test)]
@@ -231,5 +371,6 @@ mod system_params {
         let mut world = World::new();
         init(&mut world, open_cards);
         init(&mut world, pick_card);
+        init(&mut world, hover_cards);
     }
 }

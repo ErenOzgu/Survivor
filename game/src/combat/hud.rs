@@ -2,9 +2,11 @@
 
 use bevy::prelude::*;
 
+use super::art::{WowArt, STATUS_BAR};
 use super::hero::{DeathNotice, HeroHealth};
 use super::rules;
-use super::{skill_label, CombatSet, Run};
+use super::{CombatSet, Run};
+use crate::content::SkillId;
 use crate::game::FollowCam;
 
 pub struct HudPlugin;
@@ -14,7 +16,8 @@ impl Plugin for HudPlugin {
         app.add_systems(Startup, (load_font, spawn_hud).chain())
             .add_systems(
                 Update,
-                (ui_on_follow_camera, update_hud).in_set(CombatSet::Ui),
+                (ui_on_follow_camera, update_hud, update_skill_bar, skin_bars)
+                    .in_set(CombatSet::Ui),
             );
     }
 }
@@ -71,8 +74,9 @@ struct XpFill;
 struct LevelText;
 #[derive(Component)]
 struct TimerText;
+/// The bottom action-bar-like row of owned skills.
 #[derive(Component)]
-struct SkillsText;
+struct SkillBar;
 #[derive(Component)]
 struct NoticeText;
 
@@ -167,22 +171,19 @@ fn spawn_hud(mut commands: Commands, font: Res<UiFont>) {
             p.spawn((Text::new("00:00"), font.text(28.0), white, TimerText));
         });
 
-    // Bottom-left: owned skills.
-    commands
-        .spawn((
-            Name::new("hud skills"),
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(16.0),
-                left: Val::Px(16.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                ..default()
-            },
-            BackgroundColor(PANEL),
-        ))
-        .with_children(|p| {
-            p.spawn((Text::new(""), font.text(18.0), white, SkillsText));
-        });
+    // Bottom-centre: owned skills as an action bar (filled by `update_skill_bar`).
+    commands.spawn((
+        Name::new("hud skills"),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(14.0),
+            width: Val::Percent(100.0),
+            justify_content: JustifyContent::Center,
+            column_gap: Val::Px(6.0),
+            ..default()
+        },
+        SkillBar,
+    ));
 
     // Centre: the death banner.
     commands
@@ -206,6 +207,103 @@ fn spawn_hud(mut commands: Commands, font: Res<UiFont>) {
         });
 }
 
+/// Rebuilds the skill bar when the loadout changes (or the art arrives): each owned skill as its
+/// WoW icon in a slot, with its level, gold when maxed.
+fn update_skill_bar(
+    mut commands: Commands,
+    run: Res<Run>,
+    art: Res<WowArt>,
+    font: Res<UiFont>,
+    bars: Query<Entity, With<SkillBar>>,
+    mut shown: Local<Option<Vec<(SkillId, u8)>>>,
+) {
+    let Ok(bar) = bars.single() else {
+        return;
+    };
+    if shown.as_ref() == Some(&run.loadout.0) && !art.is_changed() {
+        return;
+    }
+    *shown = Some(run.loadout.0.clone());
+    commands.entity(bar).despawn_related::<Children>();
+    commands.entity(bar).with_children(|b| {
+        for &(id, level) in &run.loadout.0 {
+            let c = id.def().color;
+            let color = Color::srgb(c[0], c[1], c[2]);
+            let maxed = level >= id.max_level();
+            b.spawn((
+                Node {
+                    width: Val::Px(52.0),
+                    height: Val::Px(52.0),
+                    border: UiRect::all(Val::Px(2.0)),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(color.with_alpha(0.35)),
+                BorderColor::all(if maxed {
+                    Color::srgb(1.0, 0.82, 0.0)
+                } else {
+                    Color::srgba(0.0, 0.0, 0.0, 0.9)
+                }),
+            ))
+            .with_children(|slot| {
+                match art.icon(id) {
+                    Some(img) => {
+                        slot.spawn((
+                            ImageNode::new(img),
+                            Node {
+                                position_type: PositionType::Absolute,
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                ..default()
+                            },
+                        ));
+                    }
+                    None => {
+                        slot.spawn((
+                            Text::new(id.def().name.chars().next().unwrap_or('?').to_string()),
+                            font.text(26.0),
+                            TextColor(Color::WHITE),
+                        ));
+                    }
+                }
+                // The level in the corner, as WoW shows a stack count.
+                slot.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        right: Val::Px(2.0),
+                        bottom: Val::Px(0.0),
+                        ..default()
+                    },
+                    Text::new(level.to_string()),
+                    font.text(16.0),
+                    TextColor(Color::WHITE),
+                    TextShadow::default(),
+                ));
+            });
+        }
+    });
+}
+
+/// Once the art is in, the health and XP bars wear WoW's status-bar texture, tinted.
+#[allow(clippy::type_complexity)]
+fn skin_bars(
+    mut commands: Commands,
+    art: Res<WowArt>,
+    bars: Query<(Entity, &BackgroundColor), (Or<(With<HpFill>, With<XpFill>)>, Without<ImageNode>)>,
+) {
+    let Some(tex) = art.ui(STATUS_BAR) else {
+        return;
+    };
+    for (e, bg) in &bars {
+        commands.entity(e).insert(
+            ImageNode::new(tex.clone())
+                .with_color(bg.0)
+                .with_mode(NodeImageMode::Stretch),
+        );
+    }
+}
+
 /// `mm:ss`.
 pub fn clock(secs: f32) -> String {
     let s = secs.max(0.0) as u32;
@@ -226,7 +324,6 @@ fn update_hud(
         Query<&mut Text, With<HpText>>,
         Query<&mut Text, With<LevelText>>,
         Query<&mut Text, With<TimerText>>,
-        Query<&mut Text, With<SkillsText>>,
         Query<&mut Text, With<NoticeText>>,
     )>,
 ) {
@@ -246,29 +343,8 @@ fn update_hud(
     if let Ok(mut t) = texts.p2().single_mut() {
         **t = format!("{}   ·   {} düşman", clock(run.time), run.kills);
     }
-    if let Ok(mut t) = texts.p3().single_mut() {
-        let lines: Vec<String> = run
-            .loadout
-            .0
-            .iter()
-            .map(|(id, l)| {
-                let max = if *l >= id.max_level() {
-                    "  (en üst)"
-                } else {
-                    ""
-                };
-                format!("{}{max}", skill_label(*id, *l))
-            })
-            .collect();
-        **t = format!(
-            "Skill'ler {}/{}\n{}",
-            run.loadout.0.len(),
-            crate::content::MAX_SKILLS,
-            lines.join("\n")
-        );
-    }
     notice.left = (notice.left - real.delta_secs()).max(0.0);
-    if let Ok(mut t) = texts.p4().single_mut() {
+    if let Ok(mut t) = texts.p3().single_mut() {
         let want = if notice.left > 0.0 {
             notice.text.as_str()
         } else {
@@ -306,6 +382,8 @@ mod system_params {
     fn systems_initialize() {
         let mut world = World::new();
         init(&mut world, update_hud);
+        init(&mut world, update_skill_bar);
+        init(&mut world, skin_bars);
         init(&mut world, ui_on_follow_camera);
         init(&mut world, spawn_hud);
         init(&mut world, load_font);
