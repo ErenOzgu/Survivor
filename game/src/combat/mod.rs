@@ -6,6 +6,7 @@
 
 pub mod cards;
 pub mod enemies;
+pub mod flat;
 pub mod hero;
 pub mod hud;
 pub mod rules;
@@ -66,6 +67,7 @@ impl Plugin for CombatPlugin {
                 xp::XpPlugin,
                 cards::CardsPlugin,
                 hud::HudPlugin,
+                flat::FlatPlugin,
             ));
     }
 }

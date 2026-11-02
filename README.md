@@ -180,6 +180,8 @@ kürelerini toplamak.
 | `RNS_LEVEL` | `10` | Test: koşu bu level'da başlar; aradaki her level için kart ekranı sırayla açılır |
 | `RNS_SKILLS` | `all` veya `frostbolt:3,blizzard,blink:5` | Test: başlangıç skill'leri. `all` = 8 skill'in hepsi en üst seviyede (6 sınırı yok sayılır). Liste: `anahtar[:seviye]`; anahtarlar `frostbolt fireball missiles nova blizzard flamestrike explosion blink` |
 | `RNS_GOD` | `1` | Test: kahraman hasar almaz |
+| `RNS_FLAT` | `1` | Test: arazi yüklenmeyen yerde kahraman düz bir zeminde durur (yeşil zemin + taşlar çizilir). WoW verisi **olmadan** savaşı denemek için |
+| `RNS_FONT` | `C:\Windows\Fonts\arial.ttf` | Test: arayüz yazıları için WoW'unki yerine bu font dosyası (WoW verisi yokken yazılar görünsün diye) |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |

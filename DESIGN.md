@@ -26,6 +26,7 @@ Koşular arası: talent ağacı (haritada kazanılan XP ile) · boss drop'ları 
 | Skill'ler | Her koşuda sıfırlanır |
 | Kalıcı ilerleme | Haritada kazanılan XP ile talentlar açılır; boss drop'ları ve gear |
 | Sınıflar | Birden çok WoW sınıfı, her birinin kendi skill havuzu (ör. Mage: Frostbolt, Fireball, Blizzard…) |
+| Mini boss'lar ve map boss'u | Bağ yok: mini boss kesmek map boss'unu zayıflatmaz (gerekirse sonra eklenir) |
 
 Skill listeleri, sayılar ve skill'lerin nasıl güçlendiği bu projede tasarlanır (bkz. CLAUDE.md §2).
 
@@ -53,7 +54,6 @@ Level atlayınca 3 kart çıkar; her kart ya yeni bir skill ya da sahip olunan b
 ## Açık sorular
 
 - Kaç harita, hangi bölgeler?
-- Mini boss'lar map boss'unu etkiliyor mu (örn. hepsi kesilirse boss zayıflar)?
 - Gear slotları ve drop nadirlikleri
 
 ## Teknik temel

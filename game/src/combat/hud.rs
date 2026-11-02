@@ -34,7 +34,23 @@ impl UiFont {
     }
 }
 
-fn load_font(mut commands: Commands, server: Res<AssetServer>) {
+/// `RNS_FONT`: a font file to use instead of WoW's (e.g. `C:\\Windows\\Fonts\\arial.ttf`), for
+/// testing without WoW data.
+pub const FONT_VAR: &str = "RNS_FONT";
+
+fn load_font(mut commands: Commands, server: Res<AssetServer>, mut fonts: ResMut<Assets<Font>>) {
+    if let Ok(path) = std::env::var(FONT_VAR) {
+        match std::fs::read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|b| Font::try_from_bytes(b).map_err(|e| e.to_string()))
+        {
+            Ok(font) => {
+                commands.insert_resource(UiFont(fonts.add(font)));
+                return;
+            }
+            Err(e) => warn!("rnsurvivors: {FONT_VAR}={path:?} unusable ({e}), using WoW's font"),
+        }
+    }
     commands.insert_resource(UiFont(server.load("mpq://fonts/arialn.ttf")));
 }
 
