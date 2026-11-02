@@ -5,6 +5,7 @@
 use bevy::prelude::*;
 
 use super::art::{WowArt, STATUS_BAR};
+use super::bosses::Boss;
 use super::enemies::Enemy;
 use super::CombatSet;
 use crate::content::EnemyKind;
@@ -66,7 +67,8 @@ fn update_plates(
     mut commands: Commands,
     art: Res<WowArt>,
     cams: Query<(&Camera, &GlobalTransform), With<FollowCam>>,
-    enemies: Query<(Entity, &GlobalTransform, &Enemy, Has<HasPlate>)>,
+    // Elites and bosses have their own named bar (`boss_hud`).
+    enemies: Query<(Entity, &GlobalTransform, &Enemy, Has<HasPlate>), Without<Boss>>,
     mut plates: Query<(Entity, &Plate, &mut Node, &mut Visibility, &Children)>,
     mut fills: Query<&mut Node, (With<PlateFill>, Without<Plate>)>,
 ) {

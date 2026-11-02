@@ -8,12 +8,10 @@ pub const SPAWN_RING_MAX: f32 = 30.0;
 /// An enemy that falls this far behind is moved back onto the ring ahead of the hero.
 pub const LEASH: f32 = 45.0;
 
-/// When the Defias boss arrives, seconds into the run (phase 3).
-#[allow(dead_code)] // phase 3
+/// When the Defias boss arrives, seconds into the run.
 pub const BOSS_AT: f32 = 600.0;
-/// Where the gnoll chief waits, WoW world `x, y` (phase 3). Roughly the Fargodeep Mine mouth,
+/// Where the gnoll chief waits, WoW world `x, y`. Roughly the Fargodeep Mine mouth,
 /// south-west of Goldshire; to be checked in game.
-#[allow(dead_code)] // phase 3
 pub const GNOLL_CHIEF_AT: (f32, f32) = (-9800.0, 140.0);
 
 /// The spawner's settings at one moment of the run.
