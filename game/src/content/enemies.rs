@@ -1,11 +1,15 @@
-//! The first map's enemies (Elwynn, around Goldshire). The elite and the boss are data for phase 3;
-//! phase 2 spawns only the three normal kinds.
+//! The first map's enemies (Elwynn, around Goldshire): five normal kinds for the waves, and the
+//! bodies the elite and the bosses borrow.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EnemyKind {
     Kobold,
     Wolf,
     Spider,
+    /// Keeps its distance and throws slow fire bolts (dodgeable).
+    Geomancer,
+    /// Runs at the hero, lights a short fuse, and blows up.
+    Sapper,
     /// Elite at a fixed spot (phase 3).
     GnollChief,
     /// The map boss, arrives on a timer (phase 3).
@@ -14,18 +18,86 @@ pub enum EnemyKind {
 
 impl EnemyKind {
     /// The kinds the wave spawner draws from.
-    pub const NORMAL: [EnemyKind; 3] = [EnemyKind::Kobold, EnemyKind::Wolf, EnemyKind::Spider];
+    pub const NORMAL: [EnemyKind; 5] = [
+        EnemyKind::Kobold,
+        EnemyKind::Wolf,
+        EnemyKind::Spider,
+        EnemyKind::Geomancer,
+        EnemyKind::Sapper,
+    ];
 
     pub fn def(self) -> &'static EnemyDef {
         match self {
             EnemyKind::Kobold => &KOBOLD,
             EnemyKind::Wolf => &WOLF,
             EnemyKind::Spider => &SPIDER,
+            EnemyKind::Geomancer => &GEOMANCER,
+            EnemyKind::Sapper => &SAPPER,
             EnemyKind::GnollChief => &GNOLL_CHIEF,
             EnemyKind::DefiasBoss => &DEFIAS_BOSS,
         }
     }
+
+    /// How the kind fights (elites and bosses add their own special attacks on top).
+    pub fn behavior(self) -> Behavior {
+        match self {
+            EnemyKind::Geomancer => Behavior::Ranged(GEOMANCER_BOLT),
+            EnemyKind::Sapper => Behavior::Exploder(SAPPER_BLAST),
+            _ => Behavior::Melee,
+        }
+    }
 }
+
+/// How an enemy attacks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Behavior {
+    /// Runs into the hero; contact damage.
+    Melee,
+    /// Stops at a distance and shoots.
+    Ranged(RangedDef),
+    /// Runs in, lights a fuse, explodes (and dies).
+    Exploder(ExplodeDef),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RangedDef {
+    /// The distance it keeps from the hero.
+    pub keep: f32,
+    /// It shoots when the hero is this close.
+    pub range: f32,
+    /// Seconds between shots.
+    pub cooldown: f32,
+    /// Damage per bolt (times the wave's damage multiplier).
+    pub damage: f32,
+    /// Bolt speed, yards per second (slower than the hero: it can be dodged).
+    pub speed: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExplodeDef {
+    /// It lights the fuse this close to the hero.
+    pub trigger: f32,
+    /// Seconds from the fuse to the blast; the warning circle grows meanwhile.
+    pub fuse: f32,
+    pub radius: f32,
+    /// Blast damage (times the wave's damage multiplier).
+    pub damage: f32,
+}
+
+pub const GEOMANCER_BOLT: RangedDef = RangedDef {
+    keep: 10.0,
+    range: 14.0,
+    cooldown: 2.6,
+    damage: 9.0,
+    speed: 6.5,
+};
+
+pub const SAPPER_BLAST: ExplodeDef = ExplodeDef {
+    trigger: 2.2,
+    fuse: 0.9,
+    radius: 3.0,
+    damage: 22.0,
+};
 
 #[derive(Debug)]
 pub struct EnemyDef {
@@ -81,6 +153,31 @@ pub static SPIDER: EnemyDef = EnemyDef {
     scale: 1.1,
 };
 
+/// A kobold caster at the back of the pack.
+pub static GEOMANCER: EnemyDef = EnemyDef {
+    name: "Kobold Falcı",
+    health: 22.0,
+    speed: 3.0,
+    contact_dps: 4.0,
+    xp: 2,
+    radius: 0.5,
+    color: [0.45, 0.35, 0.85],
+    scale: 0.85,
+};
+
+/// A kobold with a lit candle and too much powder. Killing it first gives its XP; letting it
+/// blow up gives none.
+pub static SAPPER: EnemyDef = EnemyDef {
+    name: "Fitilci Kobold",
+    health: 10.0,
+    speed: 5.2,
+    contact_dps: 0.0,
+    xp: 2,
+    radius: 0.5,
+    color: [0.95, 0.35, 0.15],
+    scale: 0.8,
+};
+
 pub static GNOLL_CHIEF: EnemyDef = EnemyDef {
     name: "Gnoll Şefi",
     health: 650.0,
@@ -112,6 +209,24 @@ mod tests {
         for k in EnemyKind::NORMAL {
             assert!(k.def().speed < crate::motion::HERO_SPEED, "{k:?}");
         }
+    }
+
+    #[test]
+    fn special_kinds_are_fair() {
+        let Behavior::Ranged(r) = EnemyKind::Geomancer.behavior() else {
+            panic!("geomancer shoots");
+        };
+        assert!(r.speed < crate::motion::HERO_SPEED, "bolts can be outrun");
+        assert!(r.keep < r.range);
+        let Behavior::Exploder(x) = EnemyKind::Sapper.behavior() else {
+            panic!("sapper explodes");
+        };
+        assert!(x.fuse >= 0.6, "time to step away");
+        assert!(
+            crate::motion::HERO_SPEED * x.fuse > x.radius - x.trigger,
+            "a running hero can clear the blast"
+        );
+        assert_eq!(EnemyKind::Kobold.behavior(), Behavior::Melee);
     }
 
     #[test]

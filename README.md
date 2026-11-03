@@ -47,6 +47,16 @@ oynanabilir bir savaş döngüsü kurar:
 | Arcane Explosion | Etrafa patlama dalgası | Hasar 8 → 28 |
 | Blink | Can %35'in altındayken ya da 4+ düşman dibindeyken kendiliğinden ışınlanır, kısa süre hasar almaz | Bekleme 20 → 7 sn |
 
+### Düşmanlar
+
+| Düşman | Ne zaman | Ne yapar |
+|---|---|---|
+| Kobold | baştan | Yavaş, kalabalık; değince hasar |
+| Kurt | 0:45 | Hızlı, sürüyle gelir |
+| Örümcek | 2:00 | Dayanıklı, değince çok acıtır |
+| **Kobold Falcı** | 3:00 | Uzakta durur (≈10 yard), yaklaşınca geri çekilir; yavaş mor büyü fırlatır (koşarak kaçılır) |
+| **Fitilci Kobold** | 4:30 | Hızlı koşar, dibine gelince fitili yakar: yerde kırmızı daire büyür, 0,9 sn sonra patlar. Kendini patlatırsa XP vermez; önce öldür ya da daireden çık |
+
 ### Pasif kartlar
 
 Level atlayınca skill'lerin yanında pasif kartlar da çıkar; en fazla **6 pasif**, her biri 5 seviye.

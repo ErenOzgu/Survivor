@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use benilla_assets::coords::wow_to_bevy;
 
-use super::enemies::{Corpse, Enemy};
+use super::enemies::{Corpse, Enemy, EnemyBolt};
 use super::portal::MapCleared;
 use super::rules::{self, HERO_MAX_HEALTH, HERO_REGEN};
 use super::skills::{Projectile, SkillTimers, Zone};
@@ -52,6 +52,15 @@ impl HeroHealth {
 
     pub fn fraction(&self) -> f32 {
         (self.current / self.max).clamp(0.0, 1.0)
+    }
+
+    /// A hit on the hero from an attack (not contact): nothing while invulnerable or in god
+    /// mode.
+    pub fn take(&mut self, damage: f32, god: bool) {
+        if god || self.invulnerable > 0.0 {
+            return;
+        }
+        self.current = rules::apply_damage(self.current, damage).0;
     }
 
     pub fn heal(&mut self, amount: f32) {
@@ -145,6 +154,7 @@ fn reset_run(
             With<Orb>,
             With<Flash>,
             With<Corpse>,
+            With<EnemyBolt>,
         )>,
     >,
 ) {

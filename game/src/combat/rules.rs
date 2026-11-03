@@ -432,6 +432,29 @@ pub const CORPSE_SECS: f32 = 2.2;
 pub const CORPSE_SINK: f32 = 0.7;
 pub const CORPSE_DEPTH: f32 = 1.5;
 
+/// A ranged enemy's step: close in to `keep` yards, back off when the hero comes within 70% of
+/// it, else hold.
+pub fn kite_step(pos: Vec3, hero: Vec3, speed: f32, dt: f32, keep: f32) -> Vec3 {
+    let d = flat_dist(pos, hero);
+    if d > keep {
+        chase_step(pos, hero, speed, dt, keep)
+    } else if d < keep * 0.7 && d > 1e-4 {
+        let away = (pos - hero).with_y(0.0).normalize_or_zero();
+        pos + away * (speed * dt).min(keep * 0.7 - d)
+    } else {
+        pos
+    }
+}
+
+/// How grown a fuse's warning circle is, `0..=1`, with `left` of `total` seconds to go.
+pub fn fuse_progress(left: f32, total: f32) -> f32 {
+    if total <= 0.0 {
+        1.0
+    } else {
+        (1.0 - left / total).clamp(0.0, 1.0)
+    }
+}
+
 /// Whether an enemy `dist` yards from the hero, with body `radius`, touches it.
 pub fn touching(dist: f32, radius: f32) -> bool {
     dist <= radius + CONTACT_REACH
@@ -897,6 +920,26 @@ mod tests {
         assert!(!got && p.x < 4.0);
         assert!(orb_step(Vec3::X * 1.5, hero, ORB_MAGNET, 0.1).1);
         assert!(orb_step(Vec3::X * 0.5, hero, ORB_MAGNET, 0.0).1);
+    }
+
+    #[test]
+    fn ranged_enemies_hold_their_distance() {
+        let hero = Vec3::ZERO;
+        let far = kite_step(Vec3::X * 20.0, hero, 3.0, 1.0, 10.0);
+        assert!((far.x - 17.0).abs() < 1e-5, "closes in");
+        let near = kite_step(Vec3::X * 4.0, hero, 3.0, 1.0, 10.0);
+        assert!(near.x > 4.0, "backs off");
+        let held = kite_step(Vec3::X * 9.0, hero, 3.0, 1.0, 10.0);
+        assert_eq!(held, Vec3::X * 9.0);
+        assert!(kite_step(Vec3::X * 12.0, hero, 30.0, 1.0, 10.0).x >= 10.0 - 1e-5);
+    }
+
+    #[test]
+    fn fuses_grow() {
+        assert_eq!(fuse_progress(1.0, 1.0), 0.0);
+        assert_eq!(fuse_progress(0.0, 1.0), 1.0);
+        assert_eq!(fuse_progress(0.25, 1.0), 0.75);
+        assert_eq!(fuse_progress(0.0, 0.0), 1.0);
     }
 
     #[test]

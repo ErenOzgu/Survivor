@@ -27,7 +27,7 @@ const PLATE_RED: Color = Color::srgb(0.85, 0.1, 0.05);
 /// How far above an enemy's feet its bar floats, yards.
 pub fn bar_height(kind: EnemyKind) -> f32 {
     match kind {
-        EnemyKind::Kobold => 2.1,
+        EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => 2.1,
         EnemyKind::Wolf => 1.7,
         EnemyKind::Spider => 1.6,
         EnemyKind::GnollChief => 3.6,
