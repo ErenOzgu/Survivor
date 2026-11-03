@@ -30,6 +30,10 @@ pub const PLATE_BORDER: &str = "Interface\\Tooltips\\Nameplate-Border";
 pub const DIALOG_BACKGROUND: &str = "Interface\\DialogFrame\\UI-DialogBox-Background";
 pub const TOOLTIP_BACKGROUND: &str = "Interface\\Tooltips\\UI-Tooltip-Background";
 pub const SLOT_FRAME: &str = "Interface\\Buttons\\UI-Quickslot2";
+/// The mage talent trees' paintings (their top-left piece), behind the level-up cards' icons.
+pub const TALENT_FROST: &str = "Interface\\TalentFrame\\MageFrost-TopLeft";
+pub const TALENT_FIRE: &str = "Interface\\TalentFrame\\MageFire-TopLeft";
+pub const TALENT_ARCANE: &str = "Interface\\TalentFrame\\MageArcane-TopLeft";
 
 /// What a skill is in the client. `spell_id`, `visual` and `icon_path` feed the spell effects
 /// (next) and the log.
@@ -206,6 +210,9 @@ fn load_art(
         DIALOG_BACKGROUND,
         TOOLTIP_BACKGROUND,
         SLOT_FRAME,
+        TALENT_FROST,
+        TALENT_FIRE,
+        TALENT_ARCANE,
     ] {
         match wa.sprite_texture(path, &mut images) {
             Some(h) => {
@@ -461,6 +468,9 @@ fn write_report(art: &WowArt) {
         DIALOG_BACKGROUND,
         TOOLTIP_BACKGROUND,
         SLOT_FRAME,
+        TALENT_FROST,
+        TALENT_FIRE,
+        TALENT_ARCANE,
     ] {
         let ok = if art.ui.contains_key(path) {
             "var"
