@@ -294,7 +294,7 @@ Tıkla: puan ver. R: bütün puanları ücretsiz geri al.
 ### Launcher
 
 Repo klasöründeki **`Rnsurvivors.bat`**'a çift tıkla. İlk seferde WoW 1.12.1 `Data` klasörünü
-(içinde `.MPQ` dosyaları olan) bir klasör seçme penceresiyle sorar, `%APPDATA%\Rnsurvivors\ayarlar.txt`'e
+(içinde `dbc.MPQ` olan) bir klasör seçme penceresiyle sorar, `%APPDATA%\Rnsurvivors\ayarlar.txt`'e
 kaydeder, sonra oyunu açar (derlenmemişse önce derler). Klasörü değiştirmek için:
 `Rnsurvivors.bat -Ayarla`. Oyun bu ayar dosyasını kendisi de okur; `WOW_DATA` artık şart değil
 (verilirse o geçerli). Betik PowerShell'i `-ExecutionPolicy Bypass` ile çalıştırır: sadece bu

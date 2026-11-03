@@ -1,5 +1,5 @@
 ﻿# Rnsurvivors launcher.
-# Asks once for the WoW 1.12.1 "Data" folder (the one with the .MPQ archives), remembers it in
+# Asks once for the WoW 1.12.1 "Data" folder (the one with dbc.MPQ), remembers it in
 # %APPDATA%\Rnsurvivors\ayarlar.txt, then starts the game. Run it again with -Ayarla to pick
 # another folder. Started by Rnsurvivors.bat in the repository root.
 param([switch]$Ayarla)
@@ -18,23 +18,20 @@ function Get-Setting([string]$key) {
     return $null
 }
 
-# A Data folder holds the client's MPQ archives (the names differ between installs).
 function Test-Data([string]$path) {
-    if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Container)) { return $false }
-    return [bool](Get-ChildItem -LiteralPath $path -File -Filter '*.mpq' -ErrorAction SilentlyContinue |
-        Select-Object -First 1)
+    return $path -and (Test-Path (Join-Path $path 'dbc.MPQ'))
 }
 
 $data = Get-Setting 'wow_data'
 if ($Ayarla -or -not (Test-Data $data)) {
     Add-Type -AssemblyName System.Windows.Forms
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = 'WoW 1.12.1 "Data" klasörünü seç (içinde .MPQ dosyaları olan klasör)'
+    $dialog.Description = 'WoW 1.12.1 "Data" klasörünü seç (içinde dbc.MPQ olan klasör)'
     if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { exit 1 }
     $data = $dialog.SelectedPath
     if (-not (Test-Data $data)) {
         [System.Windows.Forms.MessageBox]::Show(
-            "Bu klasörde .MPQ dosyası yok:`n$data`n`nWoW kurulumunun içindeki Data klasörünü seç.",
+            "Bu klasörde dbc.MPQ yok:`n$data`n`nWoW kurulumunun içindeki Data klasörünü seç.",
             'Rnsurvivors') | Out-Null
         exit 1
     }
