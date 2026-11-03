@@ -79,8 +79,9 @@ pub struct BossDef {
 }
 
 impl BossDef {
+    /// Its name in the zone being played.
     pub fn name(&self) -> &'static str {
-        self.stats.name
+        super::zones::boss_name(self).unwrap_or(self.stats.name)
     }
 
     pub fn arrives_at(&self) -> Option<f32> {

@@ -13,6 +13,7 @@ use super::{CombatSet, HeroDied, RestartRun, Run};
 use crate::content::crafting::{Food, Mat};
 use crate::content::items::{Item, ItemSlot};
 use crate::content::talents::{points_for_xp, Talents};
+use crate::content::zones::ZoneId;
 
 pub const SAVE_VAR: &str = "RNS_SAVE";
 
@@ -87,6 +88,9 @@ pub struct SaveData {
     pub food_pick: Option<Food>,
     /// The meal eaten for the run under way (its buff counts; not saved).
     pub active_food: Option<Food>,
+    /// The zone picked for the runs, and the zones cleared (each opens the next).
+    pub zone: ZoneId,
+    pub cleared_zones: Vec<ZoneId>,
 }
 
 /// How a run ended.
@@ -149,6 +153,11 @@ impl SaveData {
         ));
         if let Some(f) = self.food_pick {
             s.push_str(&format!("food_pick={}\n", f.key()));
+        }
+        s.push_str(&format!("zone={}\n", self.zone.key()));
+        if !self.cleared_zones.is_empty() {
+            let keys: Vec<&str> = self.cleared_zones.iter().map(|z| z.key()).collect();
+            s.push_str(&format!("cleared_zones={}\n", keys.join(",")));
         }
         s
     }
@@ -274,6 +283,10 @@ impl SaveData {
                     }
                 }
                 "food_pick" => d.food_pick = Food::from_key(v),
+                "zone" => d.zone = ZoneId::from_key(v).unwrap_or_default(),
+                "cleared_zones" => {
+                    d.cleared_zones = v.split(',').filter_map(ZoneId::from_key).collect();
+                }
                 _ => {}
             }
         }
@@ -287,7 +300,13 @@ impl SaveData {
         self.talent_xp += xp as u64;
         match ending {
             Ending::Died => self.deaths += 1,
-            Ending::Cleared => self.maps_cleared += 1,
+            Ending::Cleared => {
+                self.maps_cleared += 1;
+                let z = crate::content::zones::current();
+                if !self.cleared_zones.contains(&z) {
+                    self.cleared_zones.push(z);
+                }
+            }
             Ending::Abandoned => {}
         }
         self.total_kills += kills as u64;

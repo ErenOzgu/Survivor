@@ -12,6 +12,7 @@ pub mod passives;
 pub mod skills;
 pub mod talents;
 pub mod waves;
+pub mod zones;
 
 pub use enemies::EnemyKind;
 pub use skills::{SkillId, SkillLevel, MAX_SKILLS};

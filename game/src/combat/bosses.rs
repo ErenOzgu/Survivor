@@ -230,7 +230,9 @@ fn spawn_boss(
     let def = ELWYNN_BOSSES[idx];
     let s = def.stats;
     let mut enemy = Enemy::new(def.body, 1.0, 1.0);
-    let health = s.health * boss_health_mul(level, def.expected_level);
+    let health = s.health
+        * boss_health_mul(level, def.expected_level)
+        * crate::content::zones::current().def().level_mul;
     enemy.health = health;
     enemy.speed = if awake { s.speed } else { 0.0 };
     enemy.dps = s.contact_dps * damage_mul;
@@ -296,7 +298,8 @@ fn spawn_timed_bosses(
         bosses.spawned[idx] = true;
         let angle = rng.0.range(0.0, std::f32::consts::TAU);
         let pos = rules::ring_point(hero.translation, angle, SPAWN_RING_MIN);
-        let damage_mul = waves::wave_at(run.time).damage_mul;
+        let damage_mul =
+            waves::wave_at(run.time).damage_mul * crate::content::zones::current().def().level_mul;
         spawn_boss(
             &mut commands,
             &placeholders,
@@ -313,7 +316,9 @@ fn spawn_timed_bosses(
 /// The spot of a guarding boss in Bevy space, at height `y`.
 pub fn guard_spot(def: &BossDef, y: f32) -> Option<Vec3> {
     match def.arrival {
-        Arrival::Guard { at, .. } => {
+        Arrival::Guard { .. } => {
+            // The guard waits at the zone's own spot.
+            let at = crate::content::zones::current().def().guard;
             let mut p = benilla_assets::coords::wow_to_bevy([at.0, at.1, 0.0]);
             p.y = y;
             Some(p)
@@ -349,7 +354,8 @@ fn guard_elites(
         let want = guard_present(dist, existing.is_some());
         match existing {
             None if want => {
-                let damage_mul = waves::wave_at(run.time).damage_mul;
+                let damage_mul = waves::wave_at(run.time).damage_mul
+                    * crate::content::zones::current().def().level_mul;
                 spawn_boss(
                     &mut commands,
                     &placeholders,
@@ -398,7 +404,8 @@ fn boss_ai(
     };
     let hero = hero.translation;
     let dt = time.delta_secs();
-    let damage_mul = waves::wave_at(run.time).damage_mul;
+    let damage_mul =
+        waves::wave_at(run.time).damage_mul * crate::content::zones::current().def().level_mul;
     for (entity, mut xf, mut e, mut boss) in &mut bosses {
         boss.landed = None;
         if !e.alive() {
@@ -580,7 +587,8 @@ fn tick_telegraphs(
     mut telegraphs: Query<(Entity, &Telegraph, &mut Transform)>,
 ) {
     let hero = heroes.single().map(|h| h.translation).ok();
-    let damage_mul = waves::wave_at(run.time).damage_mul;
+    let damage_mul =
+        waves::wave_at(run.time).damage_mul * crate::content::zones::current().def().level_mul;
     for (e, t, mut xf) in &mut telegraphs {
         let Ok(mut boss) = bosses.get_mut(t.owner) else {
             commands.entity(e).try_despawn();

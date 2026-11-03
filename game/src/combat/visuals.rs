@@ -93,17 +93,48 @@ pub fn skin_index(kind: EnemyKind) -> usize {
 }
 
 /// Once the client tables are in, picks a creature display for every enemy kind.
-fn resolve_enemy_displays(mut assets: ResMut<Placeholders>, data: Option<Res<ModelData>>) {
+fn resolve_enemy_displays(
+    mut assets: ResMut<Placeholders>,
+    data: Option<Res<ModelData>>,
+    mut for_zone: Local<Option<crate::content::zones::ZoneId>>,
+) {
+    // Another zone: its creatures look different, pick again.
+    let zone = crate::content::zones::current();
+    if *for_zone != Some(zone) && assets.displays_resolved {
+        assets.displays.clear();
+        assets.displays_resolved = false;
+    }
     if assets.displays_resolved {
         return;
     }
     let Some(data) = data else { return };
+    if data.tables.is_none() {
+        return;
+    }
+    *for_zone = Some(zone);
     // The Defias leader is a character-model NPC: found by its baked look's name.
     if let Some(id) = models::npc_display(&data, &["vancleef", "defias"]) {
         info!("rnsurvivors: DefiasBoss drawn with creature display {id}");
         assets.displays.insert(EnemyKind::DefiasBoss, id);
     }
     for kind in ALL_KINDS {
+        // The zone's own creatures first, by words in their model paths.
+        let zone_looks = crate::content::zones::enemy_looks(kind);
+        if !zone_looks.is_empty() {
+            let found = zone_looks
+                .iter()
+                .map(|n| models::creature_displays_matching(&data, n))
+                .find(|v| !v.is_empty());
+            if let Some(skins) = found {
+                let id = skins[skin_index(kind) % skins.len()];
+                info!(
+                    "rnsurvivors: {:?} in {:?} drawn with creature display {id}",
+                    kind, zone
+                );
+                assets.displays.insert(kind, id);
+                continue;
+            }
+        }
         let Some(folder) = model_folder(kind) else {
             continue;
         };

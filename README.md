@@ -100,6 +100,13 @@ oynanabilir bir savaş döngüsü kurar:
   eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
   (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
   Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Bölgeler:** Elwynn Ormanı, Westfall, Redridge Dağları, Duskwood. Ana menüdeki bölge
+  listesinden seçilir; biri bitirilince (portal) sonraki açılır. Her bölgenin kendi başlangıç yeri,
+  istemcideki o bölgenin yaratık modelleri (Westfall: murloc, çakal, akbaba, hasat golemi;
+  Redridge: gnoll, kurt, tarantula, ejder yavrusu; Duskwood: iskelet, kurtadam, örümcek,
+  hortlak), kendi boss adları ve daha zor dövüşü (can ve hasar: ×1.35, ×1.75, ×2.2) vardır.
+  Kurallar (dalgalar, roller, boss saatleri) aynıdır. Başlangıç ve elit noktaları oyunda
+  denenecek; `RNS_START` kendi noktasını korur.
 - **Kart ekranı** oyunu artık dondurmaz, savaşı bekletir: düşmanlar, büyüler ve kahraman durur,
   modeller ve efektler oynamaya devam eder (kartlardaki canlı sahneler için).
 - **Meslekler (P, ya da ana menüde 4):**

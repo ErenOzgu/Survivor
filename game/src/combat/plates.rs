@@ -178,7 +178,7 @@ fn update_plates(
                 })
                 .with_children(|n| {
                     n.spawn((
-                        Text::new(enemy.kind.def().name),
+                        Text::new(enemy.kind.name()),
                         font.text(12.0 * PLATE_SCALE * 1.1),
                         TextColor(Color::WHITE),
                         shadow,

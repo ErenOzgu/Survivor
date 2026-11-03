@@ -181,6 +181,7 @@ fn spawn_waves(
     // A boss in the fight (a mini or the map boss; a guarding elite once woken) calms the waves.
     let fighting = bosses.iter().any(|b| b.awake);
     let wave = waves::calmed(waves::wave_at(run.time), fighting);
+    let zone_mul = crate::content::zones::current().def().level_mul;
     spawner.next = wave.interval;
     let alive = enemies.iter().count() as u32;
     if alive >= wave.max_alive {
@@ -205,8 +206,8 @@ fn spawn_waves(
         };
         let e = commands
             .spawn((
-                Name::new(kind.def().name),
-                Enemy::new(kind, wave.health_mul, wave.damage_mul),
+                Name::new(kind.name()),
+                Enemy::new(kind, wave.health_mul * zone_mul, wave.damage_mul * zone_mul),
                 // Height is fixed by `move_enemies` once the terrain under it is known.
                 Transform::from_translation(center + jitter),
                 Visibility::default(),

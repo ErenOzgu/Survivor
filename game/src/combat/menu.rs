@@ -29,7 +29,9 @@ impl Plugin for MenuPlugin {
         })
         .add_systems(
             Update,
-            (main_menu, dim_locked, hide_hud).in_set(CombatSet::Ui),
+            (sync_zone, main_menu, dim_locked, hide_hud)
+                .chain()
+                .in_set(CombatSet::Ui),
         );
     }
 }
@@ -198,14 +200,6 @@ const CLASSES: [(&str, [f32; 4], bool); 9] = [
     ("Rahip", [0.49609375, 0.25, 0.7421875, 0.5], false),
     ("Kara Büyücü", [0.7421875, 0.25, 0.98828125, 0.5], false),
     ("Paladin", [0.0, 0.5, 0.25, 0.75], false),
-];
-
-/// The zones: Elwynn plays; the rest are on the way.
-const ZONES: [(&str, &str); 4] = [
-    ("Elwynn Ormanı", "Goldshire çevresi"),
-    ("Westfall", "Yakında"),
-    ("Redridge Dağları", "Yakında"),
-    ("Duskwood", "Yakında"),
 ];
 
 /// The mage's class colour.
@@ -442,7 +436,20 @@ fn spawn_menu(
                         for (k, v) in [
                             ("CAN", format!("{:.0}", stats.max_health)),
                             ("İLK BÜYÜ", "Frostbolt".to_string()),
-                            ("BÖLGE", "1 / 1".to_string()),
+                            (
+                                "BÖLGE",
+                                format!(
+                                    "{} / {}",
+                                    crate::content::zones::ZoneId::ALL
+                                        .iter()
+                                        .filter(|z| crate::content::zones::unlocked(
+                                            **z,
+                                            &save.cleared_zones
+                                        ))
+                                        .count(),
+                                    crate::content::zones::ZoneId::ALL.len()
+                                ),
+                            ),
                         ] {
                             r.spawn((
                                 Node {
@@ -526,7 +533,10 @@ fn spawn_menu(
                     });
                     heading(c, "Ekipman", &title(22.0));
                     c.spawn(Node {
-                        column_gap: Val::Px(6.0),
+                        column_gap: Val::Px(5.0),
+                        row_gap: Val::Px(5.0),
+                        flex_wrap: FlexWrap::Wrap,
+                        justify_content: JustifyContent::Center,
                         ..default()
                     })
                     .with_children(|r| {
@@ -543,7 +553,7 @@ fn spawn_menu(
                             let border = worn.map_or(Color::srgba(0.5, 0.5, 0.5, 0.4), |it| {
                                 super::gear_ui::rarity_color(it.rarity)
                             });
-                            icon_tile(r, img, 42.0, border);
+                            icon_tile(r, img, 34.0, border);
                         }
                     });
                     let lines = super::pause::stat_lines(&super::rules::Stats::from_parts(
@@ -606,9 +616,18 @@ fn spawn_menu(
             cols.spawn((panel_node(360.0), bg, border))
                 .with_children(|c| {
                     heading(c, "Bölge", &title(26.0));
-                    for (i, (name, sub)) in ZONES.iter().enumerate() {
-                        let open = i == 0;
-                        c.spawn((
+                    use crate::content::zones::{self, ZoneId};
+                    for (i, zone) in ZoneId::ALL.into_iter().enumerate() {
+                        let (name, sub) = (zone.def().name, zone.def().sub);
+                        let playable = zones::unlocked(zone, &save.cleared_zones);
+                        // The picked zone shows open, with its bosses.
+                        let open = zone == save.zone;
+                        let sub = if playable {
+                            sub.to_string()
+                        } else {
+                            format!("Kilitli: önce {} bitir", ZoneId::ALL[i - 1].def().name)
+                        };
+                        let mut row = c.spawn((
                             Node {
                                 width: Val::Percent(100.0),
                                 flex_direction: FlexDirection::Column,
@@ -624,14 +643,23 @@ fn spawn_menu(
                                 Color::srgba(0.5, 0.5, 0.5, 0.35)
                             }),
                             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, if open { 0.5 } else { 0.3 })),
-                        ))
-                        .with_children(|z| {
+                        ));
+                        if playable {
+                            row.insert((ZoneChoice(zone), Button));
+                        }
+                        row.with_children(|z| {
                             z.spawn((
-                                Text::new(*name),
+                                Text::new(name),
                                 title(if open { 26.0 } else { 20.0 }),
-                                TextColor(if open { gold } else { dim.with_alpha(0.6) }),
+                                TextColor(if open {
+                                    gold
+                                } else if playable {
+                                    Color::srgb(0.9, 0.85, 0.7)
+                                } else {
+                                    dim.with_alpha(0.6)
+                                }),
                             ));
-                            z.spawn((Text::new(*sub), font.text(13.0), TextColor(dim)));
+                            z.spawn((Text::new(sub), font.text(13.0), TextColor(dim)));
                             if open {
                                 z.spawn(Node {
                                     flex_wrap: FlexWrap::Wrap,
@@ -697,9 +725,14 @@ fn spawn_menu(
             ),
         ))
         .with_children(|b| {
-            b.spawn((Text::new("Elwynn Ormanı'na gir"), title(38.0), TextColor(gold), shadow));
             b.spawn((
-                Text::new("Enter ya da 1"),
+                Text::new(save.zone.def().name),
+                title(38.0),
+                TextColor(gold),
+                shadow,
+            ));
+            b.spawn((
+                Text::new("Oyna · Enter ya da 1"),
                 font.text(14.0),
                 TextColor(Color::srgb(0.95, 0.85, 0.75)),
             ));
@@ -738,6 +771,43 @@ fn hide_hud(
             };
         }
     }
+}
+
+/// A zone in the menu's list, clicked to play there.
+#[derive(Component, Clone, Copy)]
+struct ZoneChoice(crate::content::zones::ZoneId);
+
+/// The zone picked in the save is the one played: while the menu is up (a run not yet under
+/// way) the hero is moved to its start, its creatures and names take over.
+fn sync_zone(
+    mut menu: ResMut<MainMenu>,
+    mut save: ResMut<Save>,
+    mut start: ResMut<crate::game::Start>,
+    choices: Query<(&Interaction, &ZoneChoice), Changed<Interaction>>,
+    mut heroes: Query<&mut Transform, With<crate::game::Hero>>,
+) {
+    use crate::content::zones;
+    for (i, c) in &choices {
+        if *i == Interaction::Pressed && zones::unlocked(c.0, &save.data.cleared_zones) {
+            save.data.zone = c.0;
+            save.write();
+            menu.refresh = true;
+        }
+    }
+    // `RNS_START` keeps its own spot; otherwise the zone's.
+    let want = save.data.zone;
+    if !menu.is_open() || zones::current() == want {
+        return;
+    }
+    zones::set_current(want);
+    if std::env::var(crate::config::START_VAR).is_err() {
+        let (x, y) = want.def().start;
+        start.0 = crate::config::StartPoint { x, y, z: None };
+        if let Ok(mut xf) = heroes.single_mut() {
+            xf.translation = benilla_assets::coords::wow_to_bevy(start.0.wow());
+        }
+    }
+    info!("rnsurvivors: zone {:?}", want);
 }
 
 /// A locked class's icon is dimmed once its texture is on.
@@ -783,5 +853,6 @@ mod tests {
         let mut world = World::new();
         IntoSystem::into_system(main_menu).initialize(&mut world);
         IntoSystem::into_system(hide_hud).initialize(&mut world);
+        IntoSystem::into_system(sync_zone).initialize(&mut world);
     }
 }
