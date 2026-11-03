@@ -58,7 +58,7 @@ pub struct Placeholders {
 }
 
 /// The model folder an enemy kind's creature display is picked from. The Defias leader is a
-/// character-model NPC with no folder of its own; it keeps its placeholder for now.
+/// character-model NPC with no folder of its own: it is found by name instead.
 pub fn model_folder(kind: EnemyKind) -> Option<&'static str> {
     match kind {
         EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => Some("Creature\\Kobold"),
@@ -84,6 +84,11 @@ fn resolve_enemy_displays(mut assets: ResMut<Placeholders>, data: Option<Res<Mod
         return;
     }
     let Some(data) = data else { return };
+    // The Defias leader is a character-model NPC: found by its baked look's name.
+    if let Some(id) = models::npc_display(&data, &["vancleef", "defias"]) {
+        info!("rnsurvivors: DefiasBoss drawn with creature display {id}");
+        assets.displays.insert(EnemyKind::DefiasBoss, id);
+    }
     for kind in ALL_KINDS {
         let Some(folder) = model_folder(kind) else {
             continue;

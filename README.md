@@ -52,6 +52,20 @@ oynanabilir bir savaş döngüsü kurar:
 | Arcane Explosion | Etrafa patlama dalgası | Hasar 8 → 28 |
 | Blink | Can %35'in altındayken ya da 4+ düşman dibindeyken kendiliğinden ışınlanır, kısa süre hasar almaz | Bekleme 20 → 7 sn |
 
+### Ses, çarpışma, görseller
+
+- **Ses:** büyüler atılırken ve çarparken kendi seslerini çalar (istemcinin büyü kitlerindeki
+  `SoundEntries`), düşmanlar ölürken kendi ölüm seslerini (`CreatureSoundData`), arka planda
+  bulunulan bölgenin müziği (Elwynn'de Elwynn müziği). Dosyalar senin istemcinin WAV/MP3'leri.
+  Ses seviyesi ayar dosyasında: `ses=0.6`, `muzik=0.35` (0–1). `RNS_MUTE=1` sesi kapatır. Ses
+  cihazı ya da WoW verisi yoksa oyun sessiz çalışır.
+- **Çarpışma:** kahraman ve yakındaki düşmanlar binalardan, duvarlardan, ağaçlardan geçmez;
+  çarpınca kenarı boyunca kayar. Yokuşlar engel değildir.
+- **Modeller:** Defias Lideri karakter modelli NPC olarak çizilir (istemcide hazır dokusu
+  "VanCleef"/"Defias" olan görünüm). Boss sandığı ve ganimet keseleri istemcinin kendi nesne
+  modelleri (`GameObjectDisplayInfo`). Giyilen başlık artık kafada görünür (kask modeli ırka ve
+  cinsiyete göre). Portal şimdilik dönen bir halka.
+
 ### Düşmanlar
 
 | Düşman | Ne zaman | Ne yapar |
@@ -279,8 +293,7 @@ değil; git'e girmez. Bir sorun olursa bu dosyayı paylaşmak yeterli.
   sırasında açılınca oyun durur; ana menüden de açılır.
 - **Karakterde görünür:** giyilen göğüs, eller, bacaklar, ayaklar ve silah kahramanın WoW
   modelinde görünür. Görünüm, istemcinin o yuvaya uyan `ItemDisplayInfo` satırlarından eşyanın
-  kendine has numarasıyla seçilir; ikonu da o satırdan gelir. Başlık şimdilik görünmez (modeller
-  kaskı henüz kafaya takmıyor).
+  kendine has numarasıyla seçilir; ikonu da o satırdan gelir. Başlık da kafada görünür.
 - Eşyalar ve giyilenler kayıt dosyasında tutulur.
 
 ### Talentlar (Aşama 5)
@@ -350,6 +363,7 @@ kürelerini toplamak.
 | `RNS_AUTOPLAY` | `1` | Test: oyun kendi kendine oynar (kaçar, küre toplar, kart seçer) ve her 15 sn'de `rnsurvivors-denge.csv`'ye bir satır yazar; denge ölçümü için |
 | `RNS_SPEEDUP` | `2` | `RNS_AUTOPLAY` ile: oyun saati bu kat hızlı akar |
 | `RNS_BALANCE_LOG` | `denge.csv` | `RNS_AUTOPLAY`'in yazdığı dosya |
+| `RNS_MUTE` | `1` | Sesi kapatır |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |

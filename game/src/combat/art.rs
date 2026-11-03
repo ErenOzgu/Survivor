@@ -74,6 +74,9 @@ pub struct SkillFx {
     pub area: Option<String>,
     /// On what it leaves frozen.
     pub state: Option<String>,
+    /// `SoundEntries` kits: when it is cast, and where it hits.
+    pub cast_sound: Option<u32>,
+    pub impact_sound: Option<u32>,
 }
 
 /// Attachment tags as the visual kits use them.
@@ -86,7 +89,9 @@ pub fn visual_fx(
     stages: &VisualStages,
     effect_path: &dyn Fn(u32) -> Option<String>,
     kit: &dyn Fn(u32) -> Vec<(u16, u32)>,
+    kit_sound: &dyn Fn(u32) -> Option<u32>,
 ) -> SkillFx {
+    let sound = |k: u32| (k != 0).then(|| kit_sound(k)).flatten();
     let pick = |kit_id: u32, prefer: &[u16]| -> Option<String> {
         if kit_id == 0 {
             return None;
@@ -119,6 +124,8 @@ pub fn visual_fx(
                     .and_then(|(_, id)| effect_path(*id))
             }),
         state: pick(stages.state, &[u16::MAX, TAG_FEET]),
+        cast_sound: sound(stages.cast).or_else(|| sound(stages.precast)),
+        impact_sound: sound(stages.impact),
     }
 }
 
@@ -140,6 +147,8 @@ pub fn merge_fx(sets: impl Iterator<Item = SkillFx>) -> SkillFx {
         out.impact = out.impact.or(s.impact);
         out.area = out.area.or(s.area);
         out.state = out.state.or(s.state);
+        out.cast_sound = out.cast_sound.or(s.cast_sound);
+        out.impact_sound = out.impact_sound.or(s.impact_sound);
     }
     out
 }
@@ -272,6 +281,7 @@ fn load_art(
     if let Some(v) = &art.visuals {
         let path = |id: u32| v.effect_path(id).map(str::to_string);
         let kit = |k: u32| v.kit(k).map(|k| k.effects().collect()).unwrap_or_default();
+        let kit_sound = |k: u32| v.kit(k).and_then(|k| k.sound);
         let fx_of = |spell_name: &str| -> SkillFx {
             let rows = catalog
                 .iter()
@@ -279,7 +289,7 @@ fn load_art(
             pick_spell(rows, spell_name)
                 .and_then(|sid| catalog.get(sid))
                 .and_then(|d| v.stages(d.visual))
-                .map(|st| visual_fx(st, &path, &kit))
+                .map(|st| visual_fx(st, &path, &kit, &kit_sound))
                 .unwrap_or_default()
         };
         let mut fx = HashMap::new();
@@ -566,7 +576,8 @@ mod tests {
             missile_model: 1,
             ..Default::default()
         };
-        let fx = visual_fx(&bolt, &path, &kit);
+        let no_sound = |_: u32| None;
+        let fx = visual_fx(&bolt, &path, &kit, &no_sound);
         assert_eq!(fx.missile.as_deref(), Some("Spells\\Frostbolt.mdx"));
         assert_eq!(
             fx.impact.as_deref(),
@@ -578,7 +589,8 @@ mod tests {
             state: 13,
             ..Default::default()
         };
-        let fx = visual_fx(&nova, &path, &kit);
+        let fx = visual_fx(&nova, &path, &kit, &|k| (k == 12).then_some(77));
+        assert_eq!(fx.cast_sound, Some(77));
         assert_eq!(fx.area.as_deref(), Some("Spells\\Frost_Nova_area.mdx"));
         assert_eq!(
             fx.state.as_deref(),

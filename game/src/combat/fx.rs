@@ -7,28 +7,33 @@ use bevy::prelude::*;
 
 use super::art::WowArt;
 use super::enemies::Enemy;
+use super::gear_ui::LootBag;
+use super::portal::Chest;
 use super::skills::{Projectile, Zone};
 use super::visuals::{spawn_flash, Placeholders};
 use super::xp::Orb;
 use super::CombatSet;
 use crate::content::SkillId;
-use crate::models::ModelRequest;
+use crate::models::{self, ModelData, ModelRequest};
 
 pub struct FxPlugin;
 
 impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FxBudget>().add_systems(
-            Update,
-            (
-                dress_projectiles,
-                dress_zones,
-                dress_orbs,
-                frozen_ice,
-                tick_bursts,
-            )
-                .in_set(CombatSet::Ui),
-        );
+        app.init_resource::<FxBudget>()
+            .init_resource::<ObjectLooks>()
+            .add_systems(
+                Update,
+                (
+                    dress_projectiles,
+                    dress_zones,
+                    dress_orbs,
+                    frozen_ice,
+                    tick_bursts,
+                    (resolve_object_looks, dress_objects).chain(),
+                )
+                    .in_set(CombatSet::Ui),
+            );
     }
 }
 
@@ -53,10 +58,25 @@ pub fn area_scale(id: SkillId, radius: f32) -> f32 {
     (radius / native_radius(id)).clamp(0.3, 3.0)
 }
 
-/// Bursts spawned this frame and alive, to keep within the caps.
+/// Bursts alive, to keep within the caps; and the sounds asked for this frame (kits), which the
+/// sound plays (`sound.rs`).
 #[derive(Resource, Default)]
 pub struct FxBudget {
     bursts: usize,
+    sounds: Vec<u32>,
+}
+
+impl FxBudget {
+    /// Asks for a `SoundEntries` kit to play.
+    pub fn sound(&mut self, kit: Option<u32>) {
+        if let Some(k) = kit {
+            self.sounds.push(k);
+        }
+    }
+
+    pub fn take_sounds(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.sounds)
+    }
 }
 
 /// A one-shot effect, gone after its life.
@@ -88,6 +108,11 @@ pub fn burst(
     radius: f32,
 ) {
     let fx = art.fx.get(&skill);
+    // Hits sound like the spell's impact; ground bursts (novas) like its cast.
+    budget.sound(fx.and_then(|f| match kind {
+        BurstKind::Impact => f.impact_sound,
+        BurstKind::Area => f.cast_sound.or(f.impact_sound),
+    }));
     let path = match kind {
         BurstKind::Impact => fx.and_then(|f| f.impact.clone()),
         BurstKind::Area => fx.and_then(|f| f.area.clone().or_else(|| f.impact.clone())),
@@ -181,6 +206,56 @@ fn dress_orbs(
     }
 }
 
+/// The client's models for the boss chest and loot sacks, found by their paths once the tables
+/// are in.
+#[derive(Resource, Default)]
+pub struct ObjectLooks {
+    resolved: bool,
+    chest: Option<String>,
+    sack: Option<String>,
+}
+
+fn resolve_object_looks(mut looks: ResMut<ObjectLooks>, data: Option<Res<ModelData>>) {
+    if looks.resolved {
+        return;
+    }
+    let Some(data) = data else {
+        return;
+    };
+    looks.resolved = true;
+    looks.chest = models::object_model(&data, &["chest"], &["mail", "ghost"]);
+    looks.sack = models::object_model(&data, &["sack", "lootbag", "bag0"], &["sandbag"]);
+    info!(
+        "rnsurvivors: chest model {:?}, loot sack model {:?}",
+        looks.chest, looks.sack
+    );
+}
+
+/// The boss chest and loot bags wear the client's models.
+fn dress_objects(
+    mut commands: Commands,
+    looks: Res<ObjectLooks>,
+    chests: Query<Entity, Added<Chest>>,
+    bags: Query<Entity, Added<LootBag>>,
+) {
+    if let Some(path) = &looks.chest {
+        for e in &chests {
+            commands.entity(e).insert(ModelRequest::Effect {
+                path: path.clone(),
+                scale: 1.0,
+            });
+        }
+    }
+    if let Some(path) = &looks.sack {
+        for e in &bags {
+            commands.entity(e).insert(ModelRequest::Effect {
+                path: path.clone(),
+                scale: 1.2,
+            });
+        }
+    }
+}
+
 /// The ice on an enemy Frost Nova holds.
 #[derive(Component)]
 struct IceOn(Entity);
@@ -248,5 +323,7 @@ mod tests {
         IntoSystem::into_system(dress_orbs).initialize(&mut world);
         IntoSystem::into_system(frozen_ice).initialize(&mut world);
         IntoSystem::into_system(tick_bursts).initialize(&mut world);
+        IntoSystem::into_system(resolve_object_looks).initialize(&mut world);
+        IntoSystem::into_system(dress_objects).initialize(&mut world);
     }
 }

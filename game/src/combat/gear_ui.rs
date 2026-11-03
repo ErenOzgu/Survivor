@@ -182,17 +182,26 @@ fn drop_from_bosses(
             boss.def().name(),
             items.iter().map(Item::name).collect::<Vec<_>>()
         );
-        commands.spawn((
-            Name::new("loot bag"),
-            LootBag {
-                items,
-                base_y: xf.translation.y + 0.6,
-                age: 0.0,
-            },
-            Mesh3d(assets.mesh.clone()),
-            MeshMaterial3d(assets.by_rarity[&best].clone()),
-            Transform::from_translation(xf.translation + Vec3::Y * 0.6),
-        ));
+        commands
+            .spawn((
+                Name::new("loot bag"),
+                LootBag {
+                    items,
+                    base_y: xf.translation.y + 0.6,
+                    age: 0.0,
+                },
+                Transform::from_translation(xf.translation + Vec3::Y * 0.6),
+                Visibility::default(),
+            ))
+            .with_children(|c| {
+                // The plain cube until the client's sack model is in (`fx`).
+                c.spawn((
+                    Mesh3d(assets.mesh.clone()),
+                    MeshMaterial3d(assets.by_rarity[&best].clone()),
+                    Transform::default(),
+                    crate::models::ModelPlaceholder,
+                ));
+            });
     }
 }
 

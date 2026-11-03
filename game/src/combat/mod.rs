@@ -27,6 +27,7 @@ pub mod portal;
 pub mod rules;
 pub mod save;
 pub mod skills;
+pub mod sound;
 pub mod talent_ui;
 pub mod visuals;
 pub mod xp;
@@ -104,6 +105,7 @@ impl Plugin for CombatPlugin {
                 talent_ui::TalentUiPlugin,
                 fx::FxPlugin,
                 collide::CollidePlugin,
+                sound::SoundPlugin,
             ));
     }
 }

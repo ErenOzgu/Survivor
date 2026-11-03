@@ -29,6 +29,8 @@ use super::{gear, paths, ModelRequest, ModelRoot, ModelStatus};
 
 /// The right hand's attachment id: a drawn main-hand weapon.
 const ATTACH_HAND_RIGHT: u16 = 1;
+/// The head attachment a helmet rides.
+const ATTACH_HELM: u16 = 11;
 /// Seconds a model may take to load before the request gives up.
 const LOAD_TIMEOUT: f32 = 60.0;
 
@@ -224,7 +226,20 @@ fn resolve_character(
         };
         match item.slot.body_index() {
             Some(i) => bodyslots[i] = item.display_id,
-            None if item.slot == GearSlot::Head => helm = item.display_id,
+            None if item.slot == GearSlot::Head => {
+                // The helm hides hair by its geosets and rides the head attachment as a model.
+                helm = item.display_id;
+                if let Some(model) = row.model[0].as_deref() {
+                    held.push(PendingItem {
+                        display: item.display_id,
+                        attach: ATTACH_HELM,
+                        handle: asset_server
+                            .load(m2_url(&paths::helm_model_path(model, race, sex))),
+                        dir: paths::HELM_DIR.to_string(),
+                        texture: row.model_texture[0].clone(),
+                    });
+                }
+            }
             None => {
                 if let Some(p) = held_item(item, row, asset_server) {
                     held.push(p);

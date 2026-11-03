@@ -308,6 +308,15 @@ fn cast_skills(
             }
         };
         timers.0.insert(id, if cast { next } else { 0.0 });
+        // Missiles and areas sound as they are cast (novas sound in their burst).
+        if cast
+            && !matches!(
+                id,
+                SkillId::FrostNova | SkillId::ArcaneExplosion | SkillId::Blink
+            )
+        {
+            budget.sound(art.fx.get(&id).and_then(|f| f.cast_sound));
+        }
         // The hero's model casts with the spell, unless it is mid-cast already (Blink is instant).
         if cast && id != SkillId::Blink {
             if let Some(anim) = hero_anim.as_mut() {

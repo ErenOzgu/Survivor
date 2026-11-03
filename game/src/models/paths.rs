@@ -44,6 +44,26 @@ pub fn weapon_model_path(model_name: &str) -> String {
     format!("{WEAPON_DIR}\\{model_name}")
 }
 
+/// The folder helmet models live in.
+pub const HELM_DIR: &str = "Item\\ObjectComponents\\Head";
+
+/// A helmet's model for a race (1-8: Hu Or Dw Ni Sc Ta Gn Tr) and sex (0 male, 1 female): the row
+/// names only the stem, the files are per race and sex, as the client builds them.
+pub fn helm_model_path(model_name: &str, race: u8, sex: u8) -> String {
+    const RACE_PREFIX: [&str; 8] = ["Hu", "Or", "Dw", "Ni", "Sc", "Ta", "Gn", "Tr"];
+    let prefix = RACE_PREFIX[(race.clamp(1, 8) - 1) as usize];
+    let letter = if sex == 1 { 'F' } else { 'M' };
+    let lower = model_name.to_ascii_lowercase();
+    let stem = if lower.ends_with(".mdx") || lower.ends_with(".mdl") {
+        &model_name[..model_name.len() - 4]
+    } else if lower.ends_with(".m2") {
+        &model_name[..model_name.len() - 3]
+    } else {
+        model_name
+    };
+    format!("{HELM_DIR}\\{stem}_{prefix}{letter}.m2")
+}
+
 /// An archive path as the `mpq://` URL the asset server loads, lowercased with forward slashes.
 pub fn mpq_url(path: &str) -> String {
     format!("mpq://{}", path.replace('\\', "/").to_ascii_lowercase())
@@ -72,6 +92,18 @@ pub fn same_path(a: &str, b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn helmets_are_per_race_and_sex() {
+        assert_eq!(
+            helm_model_path("Helm_Robe_A_01.mdx", 8, 1),
+            "Item\\ObjectComponents\\Head\\Helm_Robe_A_01_TrF.m2"
+        );
+        assert_eq!(
+            helm_model_path("Helm_Plate_B_01", 1, 0),
+            "Item\\ObjectComponents\\Head\\Helm_Plate_B_01_HuM.m2"
+        );
+    }
 
     #[test]
     fn character_paths() {

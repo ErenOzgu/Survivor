@@ -61,13 +61,22 @@ pub fn spawn_chest_and_portal(
     chest_at: Vec3,
     portal_at: Vec3,
 ) {
-    commands.spawn((
-        Name::new("loot chest"),
-        Chest,
-        Mesh3d(assets.chest.0.clone()),
-        MeshMaterial3d(assets.chest.1.clone()),
-        Transform::from_translation(chest_at + Vec3::Y * 0.4),
-    ));
+    commands
+        .spawn((
+            Name::new("loot chest"),
+            Chest,
+            Transform::from_translation(chest_at),
+            Visibility::default(),
+        ))
+        .with_children(|c| {
+            // The plain box until the client's chest model is in (`fx`).
+            c.spawn((
+                Mesh3d(assets.chest.0.clone()),
+                MeshMaterial3d(assets.chest.1.clone()),
+                Transform::from_xyz(0.0, 0.4, 0.0),
+                crate::models::ModelPlaceholder,
+            ));
+        });
     let y = portal_at.y + 2.0;
     commands
         .spawn((
