@@ -197,8 +197,13 @@ fn build_placeholders(
         bolt: meshes.add(Cuboid::new(0.18, 0.18, 0.8)),
         disc: meshes.add(Cylinder::new(1.0, 0.08)),
         orb: (
-            meshes.add(Sphere::new(0.22)),
-            materials.add(unlit(Color::srgb(0.3, 1.0, 0.45))),
+            meshes.add(Sphere::new(0.3)),
+            materials.add(StandardMaterial {
+                base_color: Color::srgb(0.35, 1.0, 0.5),
+                emissive: LinearRgba::rgb(0.6, 3.0, 1.0),
+                unlit: true,
+                ..default()
+            }),
         ),
         enemy_bolt: (
             meshes.add(Sphere::new(0.3)),

@@ -25,6 +25,8 @@ pub mod ids {
     pub const ATTACK_2H: u16 = 18;
     pub const ATTACK_2HL: u16 = 19;
     pub const SPELL_CAST: u16 = 32;
+    pub const JUMP_START: u16 = 37;
+    pub const JUMP: u16 = 38;
     pub const SPELL_CAST_DIRECTED: u16 = 53;
     pub const SPELL_CAST_OMNI: u16 = 54;
 }
@@ -41,6 +43,8 @@ pub enum AnimState {
     Attack,
     Hit,
     Death,
+    /// In the air (a jump): held until the feet are down again.
+    Jump,
 }
 
 impl AnimState {
@@ -55,12 +59,16 @@ impl AnimState {
             AnimState::Attack => &[ATTACK_UNARMED, ATTACK_1H, ATTACK_2H, ATTACK_2HL],
             AnimState::Hit => &[COMBAT_WOUND, STAND_WOUND],
             AnimState::Death => &[DEATH, DEAD],
+            AnimState::Jump => &[JUMP, JUMP_START, STAND],
         }
     }
 
     /// Whether the clip loops; otherwise it plays once (Death then holds its last frame).
     pub fn looping(self) -> bool {
-        matches!(self, AnimState::Idle | AnimState::Walk | AnimState::Run)
+        matches!(
+            self,
+            AnimState::Idle | AnimState::Walk | AnimState::Run | AnimState::Jump
+        )
     }
 
     /// Whether this is an action that plays once over the current state.

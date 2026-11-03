@@ -110,12 +110,12 @@ pub fn spawn_orb(commands: &mut Commands, assets: &Placeholders, at: Vec3, xp: u
             Visibility::default(),
         ))
         .with_children(|c| {
-            // The plain sphere until the client's orb model is in (`fx`).
+            // A glowing green sphere that always shows; the client's missile model (`fx`) only
+            // adds its sparkle around it (on its own it can be too faint to see).
             c.spawn((
                 Mesh3d(assets.orb.0.clone()),
                 MeshMaterial3d(assets.orb.1.clone()),
                 Transform::default(),
-                crate::models::ModelPlaceholder,
             ));
         });
 }

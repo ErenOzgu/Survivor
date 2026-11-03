@@ -69,6 +69,9 @@ pub struct Hero {
     pub vel: Vec3,
     /// Where the body faces (yaw, radians), turning smoothly toward the goal.
     pub facing: f32,
+    /// Height above the ground in a jump (yards), and its upward speed.
+    pub air: f32,
+    pub rise: f32,
 }
 
 /// The follow camera's state.
@@ -168,13 +171,32 @@ fn move_hero(
     streamer: Option<Res<TerrainStreamer>>,
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     cams: Query<&FollowCam>,
-    mut heroes: Query<(&mut Transform, &mut Hero)>,
+    mut heroes: Query<(
+        &mut Transform,
+        &mut Hero,
+        Option<&mut crate::models::ModelAnim>,
+    )>,
 ) {
-    let Ok((mut xf, mut hero)) = heroes.single_mut() else {
+    let Ok((mut xf, mut hero, anim)) = heroes.single_mut() else {
         return;
     };
     let yaw = cams.single().map(|c| c.yaw).unwrap_or(0.0);
     let dt = time.delta_secs();
+    // Space jumps (from the ground); the body rises and falls back under gravity.
+    if dt > 0.0 && hero.grounded && hero.air <= 0.0 && keys.just_pressed(KeyCode::Space) {
+        hero.rise = motion::JUMP_SPEED;
+    }
+    let was_air = hero.air > 0.0 || hero.rise > 0.0;
+    (hero.air, hero.rise) = motion::jump_step(hero.air, hero.rise, dt);
+    let in_air = hero.air > 0.0 || hero.rise > 0.0;
+    if let Some(mut anim) = anim {
+        use crate::models::AnimState;
+        if in_air {
+            anim.state = AnimState::Jump;
+        } else if was_air && anim.state == AnimState::Jump {
+            anim.state = AnimState::Idle;
+        }
+    }
 
     let mut input = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
@@ -217,7 +239,8 @@ fn move_hero(
     if grounded && !hero.grounded {
         info!("rnsurvivors: hero on the ground at y={y:.1}");
     }
-    xf.translation.y = y;
+    // In a jump the feet are that high over the ground.
+    xf.translation.y = if grounded { y + hero.air } else { y };
     hero.grounded = grounded;
 }
 
@@ -229,11 +252,11 @@ fn follow_camera(
     scroll: Res<AccumulatedMouseScroll>,
     mouse: Res<ButtonInput<MouseButton>>,
     motion_in: Res<AccumulatedMouseMotion>,
-    heroes: Query<&Transform, (With<Hero>, Without<FollowCam>)>,
+    heroes: Query<(&Transform, &Hero), Without<FollowCam>>,
     mut cams: Query<(&mut Transform, &mut FollowCam)>,
     mut cursors: Query<&mut bevy::window::CursorOptions>,
 ) {
-    let (Ok(hero), Ok((mut xf, mut cam))) = (heroes.single(), cams.single_mut()) else {
+    let (Ok((hero, body)), Ok((mut xf, mut cam))) = (heroes.single(), cams.single_mut()) else {
         return;
     };
     let lines = match scroll.unit {
@@ -266,7 +289,8 @@ fn follow_camera(
     if keys.pressed(KeyCode::KeyE) {
         cam.yaw -= TURN_SPEED * time.delta_secs();
     }
-    let target = hero.translation + Vec3::Y * motion::CAM_LOOK_HEIGHT;
+    // Not up and down with a jump: the camera keeps to the ground under the hero.
+    let target = hero.translation + Vec3::Y * (motion::CAM_LOOK_HEIGHT - body.air);
     xf.translation = target + motion::camera_offset(cam.yaw, cam.pitch, cam.distance);
     xf.look_at(target, Vec3::Y);
 }

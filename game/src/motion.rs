@@ -54,6 +54,26 @@ pub const HERO_ACCEL: f32 = 45.0;
 /// How fast the hero's body turns toward where it goes (radians per second).
 pub const HERO_TURN: f32 = 11.0;
 
+/// A jump's take-off speed (yards per second) and the pull back down: about 1.3 yards high,
+/// two thirds of a second in the air.
+pub const JUMP_SPEED: f32 = 8.0;
+pub const GRAVITY: f32 = 24.0;
+
+/// One frame of a jump: the height over the ground and the upward speed after `dt`; both end at 0
+/// on landing.
+pub fn jump_step(air: f32, rise: f32, dt: f32) -> (f32, f32) {
+    if air <= 0.0 && rise <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let rise = rise - GRAVITY * dt;
+    let air = air + rise * dt;
+    if air <= 0.0 {
+        (0.0, 0.0)
+    } else {
+        (air, rise)
+    }
+}
+
 /// `vel` moved toward `target` by at most `accel * dt`.
 pub fn approach(vel: Vec3, target: Vec3, accel: f32, dt: f32) -> Vec3 {
     let d = target - vel;
@@ -103,6 +123,24 @@ pub fn zoom(distance: f32, lines: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_jump_goes_up_and_lands() {
+        let (mut air, mut rise) = (0.0, JUMP_SPEED);
+        let mut peak: f32 = 0.0;
+        let mut frames = 0;
+        loop {
+            (air, rise) = jump_step(air, rise, 1.0 / 60.0);
+            peak = peak.max(air);
+            frames += 1;
+            if air == 0.0 || frames > 600 {
+                break;
+            }
+        }
+        assert!(peak > 1.0 && peak < 1.6, "{peak}");
+        assert!((30..60).contains(&frames), "{frames}");
+        assert_eq!(jump_step(0.0, 0.0, 0.1), (0.0, 0.0));
+    }
 
     #[test]
     fn moves_ease_and_turns_take_the_short_way() {
