@@ -10,10 +10,12 @@ use bevy::prelude::*;
 use crate::content::{EnemyKind, SkillId};
 use crate::models::{self, AutoLocomotion, ModelAnim, ModelData, ModelPlaceholder, ModelRequest};
 
-const ALL_KINDS: [EnemyKind; 5] = [
+const ALL_KINDS: [EnemyKind; 7] = [
     EnemyKind::Kobold,
     EnemyKind::Wolf,
     EnemyKind::Spider,
+    EnemyKind::Geomancer,
+    EnemyKind::Sapper,
     EnemyKind::GnollChief,
     EnemyKind::DefiasBoss,
 ];
@@ -45,6 +47,9 @@ pub struct Placeholders {
     /// A flat disc of radius 1; scale it to an area's radius.
     pub disc: Handle<Mesh>,
     pub orb: (Handle<Mesh>, Handle<StandardMaterial>),
+    /// An enemy caster's bolt, and the red see-through material of danger zones.
+    pub enemy_bolt: (Handle<Mesh>, Handle<StandardMaterial>),
+    pub warn: Handle<StandardMaterial>,
     /// The creature display each enemy kind is drawn with, once the client tables are read.
     /// A kind missing here keeps its placeholder body.
     pub displays: HashMap<EnemyKind, u32>,
@@ -56,11 +61,20 @@ pub struct Placeholders {
 /// character-model NPC with no folder of its own; it keeps its placeholder for now.
 pub fn model_folder(kind: EnemyKind) -> Option<&'static str> {
     match kind {
-        EnemyKind::Kobold => Some("Creature\\Kobold"),
+        EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => Some("Creature\\Kobold"),
         EnemyKind::Wolf => Some("Creature\\Wolf"),
         EnemyKind::Spider => Some("Creature\\Spider"),
         EnemyKind::GnollChief => Some("Creature\\Gnoll"),
         EnemyKind::DefiasBoss => None,
+    }
+}
+
+/// Which skin of its model folder a kind wears (kinds sharing a folder look apart).
+pub fn skin_index(kind: EnemyKind) -> usize {
+    match kind {
+        EnemyKind::Geomancer => 1,
+        EnemyKind::Sapper => 2,
+        _ => 0,
     }
 }
 
@@ -74,7 +88,10 @@ fn resolve_enemy_displays(mut assets: ResMut<Placeholders>, data: Option<Res<Mod
         let Some(folder) = model_folder(kind) else {
             continue;
         };
-        match models::creature_display_in_folder(&data, folder) {
+        // Kinds sharing a model folder take different skins of it.
+        let skins = models::creature_displays_in_folder(&data, folder);
+        let pick = (!skins.is_empty()).then(|| skins[skin_index(kind) % skins.len()]);
+        match pick {
             Some(id) => {
                 info!("rnsurvivors: {:?} drawn with creature display {id}", kind);
                 assets.displays.insert(kind, id);
@@ -113,9 +130,11 @@ fn build_placeholders(
         // Body shapes (feet at the origin is handled by the child transform below).
         let mesh = match kind {
             // Small upright figure.
-            EnemyKind::Kobold | EnemyKind::GnollChief | EnemyKind::DefiasBoss => {
-                meshes.add(Capsule3d::new(0.4, 0.8))
-            }
+            EnemyKind::Kobold
+            | EnemyKind::Geomancer
+            | EnemyKind::Sapper
+            | EnemyKind::GnollChief
+            | EnemyKind::DefiasBoss => meshes.add(Capsule3d::new(0.4, 0.8)),
             // Long, low body.
             EnemyKind::Wolf => meshes.add(Cuboid::new(0.6, 0.6, 1.4)),
             // Wide, flat body.
@@ -125,7 +144,7 @@ fn build_placeholders(
     }
     let mut solid = HashMap::new();
     let mut glass = HashMap::new();
-    for s in SkillId::ALL {
+    for s in SkillId::every() {
         let c = s.def().color;
         solid.insert(s, materials.add(unlit(rgb(c))));
         glass.insert(
@@ -155,6 +174,18 @@ fn build_placeholders(
             meshes.add(Sphere::new(0.22)),
             materials.add(unlit(Color::srgb(0.3, 1.0, 0.45))),
         ),
+        enemy_bolt: (
+            meshes.add(Sphere::new(0.3)),
+            materials.add(unlit(Color::srgb(0.75, 0.4, 1.0))),
+        ),
+        warn: materials.add(StandardMaterial {
+            base_color: Color::srgba(1.0, 0.1, 0.05, 0.4),
+            alpha_mode: AlphaMode::Blend,
+            unlit: true,
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        }),
         displays: HashMap::new(),
         displays_resolved: false,
     });

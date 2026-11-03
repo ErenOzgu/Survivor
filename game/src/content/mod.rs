@@ -3,7 +3,9 @@
 //! Every number here is Rnsurvivors' own design (CLAUDE.md §2), tuned for a ~10 minute first map.
 //! The systems in `crate::combat` read these tables; nothing in here touches the ECS.
 
+pub mod bosses;
 pub mod enemies;
+pub mod passives;
 pub mod skills;
 pub mod waves;
 

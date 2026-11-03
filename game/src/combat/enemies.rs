@@ -1,15 +1,17 @@
-//! Enemies: the wave spawner around the hero, chasing on the terrain, status effects, their
-//! model's animations, deaths and corpses.
+//! Enemies: the wave spawner around the hero, chasing (or keeping their distance) on the terrain,
+//! ranged bolts and sapper blasts, status effects, their model's animations, deaths and corpses.
 
 use bevy::prelude::*;
 
 use benilla_assets::AdtTile;
 use benilla_world::terrain_stream::{terrain_height_under_cached, TerrainStreamer};
 
+use super::hero::HeroHealth;
 use super::rules;
-use super::visuals::{attach_enemy_visual, Placeholders};
+use super::visuals::{attach_enemy_visual, spawn_flash, Placeholders};
 use super::xp::spawn_orb;
-use super::{hero_on_ground, CombatRng, CombatSet, Run};
+use super::{hero_on_ground, CombatRng, CombatSet, DebugStart, Run};
+use crate::content::enemies::Behavior;
 use crate::content::waves::{self, LEASH, SPAWN_RING_MAX, SPAWN_RING_MIN};
 use crate::content::EnemyKind;
 use crate::game::Hero;
@@ -26,7 +28,12 @@ impl Plugin for EnemiesPlugin {
             )
             .add_systems(
                 Update,
-                (move_enemies, animate_enemies)
+                (
+                    move_enemies,
+                    enemy_attacks,
+                    move_enemy_bolts,
+                    animate_enemies,
+                )
                     .chain()
                     .in_set(CombatSet::Act)
                     .run_if(hero_on_ground),
@@ -61,6 +68,15 @@ pub struct Enemy {
     pub just_hit: bool,
     /// Seconds to its next attack swing while touching the hero.
     pub attack_cd: f32,
+    /// Damage taken this frame (for the damage numbers), and whether any of it was a crit.
+    pub took: f32,
+    pub took_crit: bool,
+    /// Multiplier on its attacks' damage (the wave's), for bolts and blasts.
+    pub damage_mul: f32,
+    /// Seconds to its next shot (ranged kinds).
+    pub shoot_cd: f32,
+    /// Seconds left on a lit fuse (exploders); `None` until lit.
+    pub fuse: Option<f32>,
 }
 
 impl Enemy {
@@ -80,12 +96,24 @@ impl Enemy {
             hit_flash: 0.0,
             just_hit: false,
             attack_cd: 0.0,
+            took: 0.0,
+            took_crit: false,
+            damage_mul,
+            shoot_cd: 1.0,
+            fuse: None,
         }
     }
 
-    /// Takes a hit (death is resolved later in the frame).
-    pub fn hurt(&mut self, damage: f32) {
+    /// Takes a hit, maybe a critical one (death is resolved later in the frame); the damage
+    /// shows as a number.
+    pub fn strike(&mut self, damage: f32, crit: bool) {
+        if !self.alive() {
+            return;
+        }
+        let before = self.health;
         self.health = rules::apply_damage(self.health, damage).0;
+        self.took += before - self.health;
+        self.took_crit |= crit;
         self.hit_flash = 0.12;
         self.just_hit = true;
     }
@@ -196,8 +224,14 @@ fn move_enemies(
             let angle = rng.0.range(0.0, std::f32::consts::TAU);
             pos = rules::ring_point(hero_pos, angle, SPAWN_RING_MAX);
         }
-        let speed = rules::effective_speed(e.speed, e.frozen, e.slow_left, e.slow);
-        let next = rules::chase_step(pos, hero_pos, speed, dt, e.radius + 0.4);
+        let mut speed = rules::effective_speed(e.speed, e.frozen, e.slow_left, e.slow);
+        if e.fuse.is_some() {
+            speed = 0.0; // a lit sapper stands and fizzes
+        }
+        let next = match e.kind.behavior() {
+            Behavior::Ranged(r) => rules::kite_step(pos, hero_pos, speed, dt, r.keep),
+            _ => rules::chase_step(pos, hero_pos, speed, dt, e.radius + 0.4),
+        };
 
         let mut push = Vec3::ZERO;
         if speed > 0.0 {
@@ -261,6 +295,151 @@ fn animate_enemies(
     }
 }
 
+/// A bolt thrown by a ranged enemy: flies straight, hurts the hero on touch.
+#[derive(Component)]
+pub struct EnemyBolt {
+    dir: Vec3,
+    speed: f32,
+    damage: f32,
+    life: f32,
+}
+
+/// The growing red circle under a lit sapper.
+#[derive(Component)]
+struct FuseMark;
+
+/// How close a bolt must pass to hit the hero (yards).
+const BOLT_HIT: f32 = 0.9;
+
+/// Ranged enemies shoot when in range; exploders light their fuse close to the hero and blow up.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn enemy_attacks(
+    mut commands: Commands,
+    time: Res<Time>,
+    debug: Res<DebugStart>,
+    assets: Res<Placeholders>,
+    mut health: ResMut<HeroHealth>,
+    heroes: Query<&Transform, (With<Hero>, Without<Enemy>)>,
+    mut enemies: Query<(Entity, &Transform, &mut Enemy, Option<&mut ModelAnim>)>,
+    mut marks: Query<(&ChildOf, &mut Transform), (With<FuseMark>, Without<Enemy>, Without<Hero>)>,
+) {
+    let Ok(hero) = heroes.single() else {
+        return;
+    };
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+    let hero = hero.translation;
+    for (entity, xf, mut e, anim) in &mut enemies {
+        if !e.alive() || e.frozen > 0.0 {
+            continue;
+        }
+        let dist = rules::flat_dist(xf.translation, hero);
+        match e.kind.behavior() {
+            Behavior::Melee => {}
+            Behavior::Ranged(r) => {
+                e.shoot_cd -= dt;
+                if e.shoot_cd <= 0.0 && dist <= r.range {
+                    e.shoot_cd = r.cooldown;
+                    let from = xf.translation + Vec3::Y * 1.0;
+                    let dir = (hero + Vec3::Y * 1.0 - from)
+                        .with_y(0.0)
+                        .normalize_or(Vec3::NEG_Z);
+                    commands.spawn((
+                        Name::new("enemy bolt"),
+                        EnemyBolt {
+                            dir,
+                            speed: r.speed,
+                            damage: r.damage * e.damage_mul,
+                            life: r.range * 1.5 / r.speed,
+                        },
+                        Mesh3d(assets.enemy_bolt.0.clone()),
+                        MeshMaterial3d(assets.enemy_bolt.1.clone()),
+                        Transform::from_translation(from),
+                    ));
+                    if let Some(mut a) = anim {
+                        a.play(AnimState::Attack);
+                    }
+                }
+            }
+            Behavior::Exploder(x) => match e.fuse {
+                None if dist <= x.trigger => {
+                    e.fuse = Some(x.fuse);
+                    commands.entity(entity).with_children(|p| {
+                        p.spawn((
+                            FuseMark,
+                            Mesh3d(assets.disc.clone()),
+                            MeshMaterial3d(assets.warn.clone()),
+                            Transform::from_xyz(0.0, 0.12, 0.0)
+                                .with_scale(Vec3::new(0.1, 1.0, 0.1)),
+                        ));
+                    });
+                    if let Some(mut a) = anim {
+                        a.play(AnimState::Attack);
+                    }
+                }
+                Some(left) => {
+                    let left = left - dt;
+                    if left > 0.0 {
+                        e.fuse = Some(left);
+                        continue;
+                    }
+                    // Boom: the hero takes it if still inside; the sapper is gone, no XP.
+                    if dist <= x.radius {
+                        health.take(x.damage * e.damage_mul, debug.god);
+                    }
+                    spawn_flash(
+                        &mut commands,
+                        &assets,
+                        crate::content::SkillId::Fireball,
+                        xf.translation,
+                        x.radius,
+                    );
+                    e.fuse = None;
+                    e.xp = 0;
+                    e.health = 0.0;
+                }
+                None => {}
+            },
+        }
+    }
+    // The warning circles grow to the blast's size as the fuse burns.
+    for (parent, mut mxf) in &mut marks {
+        if let Ok((_, _, e, _)) = enemies.get(parent.parent()) {
+            if let (Some(left), Behavior::Exploder(x)) = (e.fuse, e.kind.behavior()) {
+                let r = x.radius * rules::fuse_progress(left, x.fuse).max(0.1);
+                mxf.scale = Vec3::new(r, 1.0, r);
+            }
+        }
+    }
+}
+
+/// Enemy bolts fly and hit the hero.
+fn move_enemy_bolts(
+    mut commands: Commands,
+    time: Res<Time>,
+    debug: Res<DebugStart>,
+    mut health: ResMut<HeroHealth>,
+    heroes: Query<&Transform, (With<Hero>, Without<EnemyBolt>)>,
+    mut bolts: Query<(Entity, &mut Transform, &mut EnemyBolt)>,
+) {
+    let Ok(hero) = heroes.single() else {
+        return;
+    };
+    let dt = time.delta_secs();
+    for (e, mut xf, mut b) in &mut bolts {
+        b.life -= dt;
+        xf.translation += b.dir * b.speed * dt;
+        if rules::flat_dist(xf.translation, hero.translation) <= BOLT_HIT {
+            health.take(b.damage, debug.god);
+            commands.entity(e).try_despawn();
+        } else if b.life <= 0.0 {
+            commands.entity(e).try_despawn();
+        }
+    }
+}
+
 /// A dead enemy's body: its model plays its death, lies a moment, then sinks away.
 #[derive(Component)]
 pub struct Corpse {
@@ -270,7 +449,7 @@ pub struct Corpse {
 
 /// Dead enemies leave an XP orb. One with a model becomes a [`Corpse`]; a placeholder is removed.
 #[allow(clippy::type_complexity)]
-fn kill_enemies(
+pub(super) fn kill_enemies(
     mut commands: Commands,
     mut run: ResMut<Run>,
     assets: Res<Placeholders>,
@@ -286,8 +465,11 @@ fn kill_enemies(
         if e.alive() {
             continue;
         }
-        spawn_orb(&mut commands, &assets, xf.translation, e.xp);
-        run.kills += 1;
+        // A sapper that blew itself up gives nothing.
+        if e.xp > 0 {
+            spawn_orb(&mut commands, &assets, xf.translation, e.xp);
+            run.kills += 1;
+        }
         match (status, anim) {
             (Some(ModelStatus::Ready), Some(mut anim)) => {
                 anim.state = AnimState::Death;
@@ -338,5 +520,7 @@ mod system_params {
         init(&mut world, kill_enemies);
         init(&mut world, animate_enemies);
         init(&mut world, tick_corpses);
+        init(&mut world, enemy_attacks);
+        init(&mut world, move_enemy_bolts);
     }
 }

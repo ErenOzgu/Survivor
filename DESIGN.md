@@ -45,6 +45,13 @@ Level atlayınca 3 kart çıkar; her kart ya yeni bir skill ya da sahip olunan b
 | Arcane Explosion | Etrafa patlama dalgası | Hasar artar |
 | Blink | Tehlikede kendiliğinden ışınlanır | Bekleme süresi kısalır |
 
+### Pasifler ve evrimler
+
+Kartlar skill'lerin yanında **pasif** de getirir (en fazla 6; hasar, bekleme, hız, can, XP çekimi,
+kritik, XP). İki skill en üst seviyede buluşunca **evrim** kartı çıkar: Frostbolt + Frost Nova →
+Kış Okları, Fireball + Flamestrike → Pyroblast, Arcane Missiles + Arcane Explosion → Arkan Fırtına.
+Sayılar ve ayrıntılar `game/src/content/` ve README'de.
+
 ## İlk harita: Elwynn (Goldshire çevresi)
 
 - Normal mob'lar: kobold, kurt, örümcek; zamanla daha kalabalık ve güçlü dalgalar

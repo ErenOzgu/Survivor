@@ -33,6 +33,11 @@ impl CardScreen {
     pub fn is_open(&self) -> bool {
         self.open.is_some()
     }
+
+    /// The cards on the open screen.
+    pub fn cards(&self) -> Option<&[Card]> {
+        self.open.as_ref().map(|(_, c)| c.as_slice())
+    }
 }
 
 /// Which card a button is.
@@ -42,10 +47,7 @@ struct CardButton(usize);
 /// A card's title and body, in Turkish.
 pub fn card_text(card: Card) -> (String, String) {
     match card {
-        Card::New(id) => (
-            format!("YENİ: {}", id.def().name),
-            id.def().desc.to_string(),
-        ),
+        Card::New(id) => (id.def().name.to_string(), id.def().desc.to_string()),
         Card::Upgrade(id, to) => (
             skill_label(id, to),
             id.def()
@@ -55,9 +57,13 @@ pub fn card_text(card: Card) -> (String, String) {
                 .unwrap_or("")
                 .to_string(),
         ),
+        Card::Evolve(_, into) => (into.def().name.to_string(), into.def().desc.to_string()),
+        Card::NewPassive(p) | Card::UpgradePassive(p, _) => {
+            (p.def().name.to_string(), p.def().line())
+        }
         Card::Heal => (
             "Can iksiri".to_string(),
-            format!("Bütün skill'ler en üst seviyede. {HEAL_CARD:.0} can geri gelir."),
+            format!("Öğrenilecek bir şey kalmadı. {HEAL_CARD:.0} can geri gelir."),
         ),
     }
 }
@@ -66,23 +72,31 @@ pub fn card_text(card: Card) -> (String, String) {
 pub fn card_tag(card: Card) -> String {
     match card {
         Card::New(_) => "YENİ SKILL".to_string(),
-        Card::Upgrade(_, to) => format!("SEVİYE {} → {to}", to - 1),
+        Card::Upgrade(_, to) | Card::UpgradePassive(_, to) => {
+            format!("SEVİYE {} → {to}", to - 1)
+        }
+        Card::Evolve(..) => "★ EVRİM ★".to_string(),
+        Card::NewPassive(_) => "YENİ PASİF".to_string(),
         Card::Heal => "İKSİR".to_string(),
     }
 }
 
-/// Level pips for a card: `(level after the pick, max level)`; none for a heal.
+/// Level pips for a card: `(level after the pick, max level)`; none for a heal or an evolution.
 pub fn card_pips(card: Card) -> Option<(u8, u8)> {
     match card {
         Card::New(id) => Some((1, id.max_level())),
         Card::Upgrade(id, to) => Some((to, id.max_level())),
-        Card::Heal => None,
+        Card::NewPassive(p) => Some((1, p.max_level())),
+        Card::UpgradePassive(p, to) => Some((to, p.max_level())),
+        Card::Evolve(..) | Card::Heal => None,
     }
 }
 
-fn card_skill(card: Card) -> Option<crate::content::SkillId> {
+/// A card's icon from the client, if the art is loaded.
+fn card_icon(card: Card, art: &WowArt) -> Option<Handle<Image>> {
     match card {
-        Card::New(id) | Card::Upgrade(id, _) => Some(id),
+        Card::New(id) | Card::Upgrade(id, _) | Card::Evolve(_, id) => art.icon(id),
+        Card::NewPassive(p) | Card::UpgradePassive(p, _) => art.passive_icon(p),
         Card::Heal => None,
     }
 }
@@ -91,12 +105,14 @@ const GOLD: Color = Color::srgb(1.0, 0.82, 0.0);
 
 fn card_color(card: Card) -> Color {
     let c = match card {
-        Card::New(id) | Card::Upgrade(id, _) => id.def().color,
+        Card::New(id) | Card::Upgrade(id, _) | Card::Evolve(_, id) => id.def().color,
+        Card::NewPassive(p) | Card::UpgradePassive(p, _) => p.def().color,
         Card::Heal => [0.9, 0.2, 0.2],
     };
     Color::srgb(c[0], c[1], c[2])
 }
 
+#[allow(clippy::too_many_arguments)]
 fn open_cards(
     mut commands: Commands,
     mut screen: ResMut<CardScreen>,
@@ -105,11 +121,13 @@ fn open_cards(
     run: Res<Run>,
     font: Res<UiFont>,
     art: Res<WowArt>,
+    pause: Res<super::pause::PauseMenu>,
+    main_menu: Res<super::menu::MainMenu>,
 ) {
-    if screen.is_open() || run.pending_cards == 0 {
+    if screen.is_open() || run.pending_cards == 0 || pause.is_open() || main_menu.is_open() {
         return;
     }
-    let cards = rules::roll_cards(&run.loadout, &mut rng.0, CARDS);
+    let cards = rules::roll_cards(&run.loadout, &run.passives, &mut rng.0, CARDS);
     clock.pause();
 
     let root = commands
@@ -163,10 +181,11 @@ fn open_cards(
 fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFont, art: &WowArt) {
     let (title, body) = card_text(card);
     let title = match card {
-        Card::New(id) | Card::Upgrade(id, _) => id.def().name.to_string(),
-        Card::Heal => title,
+        Card::Upgrade(id, _) => id.def().name.to_string(),
+        _ => title,
     };
     let color = card_color(card);
+    let evolution = matches!(card, Card::Evolve(..));
     let mut root = row.spawn((
         CardButton(i),
         Button,
@@ -181,7 +200,11 @@ fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFon
             ..default()
         },
         BackgroundColor(Color::srgba(0.06, 0.06, 0.09, 0.96)),
-        BorderColor::all(GOLD.with_alpha(0.7)),
+        BorderColor::all(if evolution {
+            GOLD
+        } else {
+            GOLD.with_alpha(0.7)
+        }),
     ));
     if let Some(bg) = art.ui(DIALOG_BACKGROUND) {
         root.insert(ImageNode::new(bg).with_mode(NodeImageMode::Tiled {
@@ -197,7 +220,7 @@ fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFon
             TextColor(Color::srgb(0.75, 0.75, 0.75)),
         ));
         // The icon in a gold frame; a coloured square with the initial without data.
-        let icon = card_skill(card).and_then(|id| art.icon(id));
+        let icon = card_icon(card, art);
         c.spawn((
             Node {
                 width: Val::Px(72.0),
@@ -230,7 +253,8 @@ fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFon
             }
         });
         let tag_color = match card {
-            Card::New(_) => Color::srgb(0.3, 1.0, 0.3),
+            Card::New(_) | Card::NewPassive(_) => Color::srgb(0.3, 1.0, 0.3),
+            Card::Evolve(..) => Color::srgb(1.0, 0.5, 1.0),
             _ => GOLD,
         };
         c.spawn((
@@ -318,6 +342,7 @@ fn pick_card(
     };
     match card {
         Card::Heal => health.heal(HEAL_CARD),
+        Card::NewPassive(_) | Card::UpgradePassive(..) => run.passives.apply(card),
         _ => run.loadout.apply(card),
     }
     info!("rnsurvivors: picked {card:?}");
@@ -343,6 +368,19 @@ mod tests {
             }
         }
         assert!(!card_text(Card::Heal).1.is_empty());
+        for (b, _, into) in crate::content::skills::EVOLUTIONS {
+            let c = Card::Evolve(b, into);
+            assert_eq!(card_text(c).0, into.def().name);
+            assert!(card_tag(c).contains("EVRİM") && card_pips(c).is_none());
+        }
+        for p in crate::content::passives::PassiveId::ALL {
+            let (t, b) = card_text(Card::NewPassive(p));
+            assert!(!t.is_empty() && !b.contains("{}"));
+            assert_eq!(
+                card_pips(Card::UpgradePassive(p, 2)),
+                Some((2, p.max_level()))
+            );
+        }
     }
 
     #[test]

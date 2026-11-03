@@ -4,13 +4,14 @@ use bevy::prelude::*;
 
 use benilla_assets::coords::wow_to_bevy;
 
-use super::enemies::{Corpse, Enemy};
+use super::enemies::{Corpse, Enemy, EnemyBolt};
+use super::portal::MapCleared;
 use super::rules::{self, HERO_MAX_HEALTH, HERO_REGEN};
 use super::skills::{Projectile, SkillTimers, Zone};
 use super::visuals::Flash;
 use super::xp::Orb;
-use super::{hero_on_ground, CombatSet, DebugStart, HeroDied, Run};
-use crate::game::{Hero, Start};
+use super::{hero_on_ground, CombatSet, DebugStart, HeroDied, RestartRun, Run};
+use crate::game::{Hero, HeroSpeed, Start};
 
 pub struct HeroPlugin;
 
@@ -20,7 +21,10 @@ impl Plugin for HeroPlugin {
             .init_resource::<DeathNotice>()
             .add_systems(
                 Update,
-                contact_damage.in_set(CombatSet::Act).run_if(hero_on_ground),
+                (apply_stats, contact_damage)
+                    .chain()
+                    .in_set(CombatSet::Act)
+                    .run_if(hero_on_ground),
             )
             .add_systems(
                 Update,
@@ -50,6 +54,15 @@ impl HeroHealth {
         (self.current / self.max).clamp(0.0, 1.0)
     }
 
+    /// A hit on the hero from an attack (not contact): nothing while invulnerable or in god
+    /// mode.
+    pub fn take(&mut self, damage: f32, god: bool) {
+        if god || self.invulnerable > 0.0 {
+            return;
+        }
+        self.current = rules::apply_damage(self.current, damage).0;
+    }
+
     pub fn heal(&mut self, amount: f32) {
         self.current = (self.current + amount).min(self.max);
     }
@@ -60,6 +73,26 @@ impl HeroHealth {
 pub struct DeathNotice {
     pub text: String,
     pub left: f32,
+}
+
+/// The passives' hero stats: more maximum health (the gain also heals) and a faster run.
+fn apply_stats(
+    run: Res<Run>,
+    mut health: ResMut<HeroHealth>,
+    mut speed: ResMut<HeroSpeed>,
+    mut base_speed: Local<Option<f32>>,
+) {
+    let stats = rules::Stats::from_passives(&run.passives);
+    if health.max != stats.max_health {
+        let gain = stats.max_health - health.max;
+        health.max = stats.max_health;
+        health.current = (health.current + gain.max(0.0)).min(health.max);
+    }
+    let base = *base_speed.get_or_insert(speed.0);
+    let want = base * stats.speed_mul;
+    if speed.0 != want {
+        speed.0 = want;
+    }
 }
 
 /// Touching enemies hurt every second they touch; the hero regenerates slowly.
@@ -91,18 +124,21 @@ fn contact_damage(
     health.current = h;
 }
 
-fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
+pub(super) fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
     if health.current <= 0.0 {
         died.write(HeroDied);
     }
 }
 
 /// Dying returns the hero to the map start with a fresh run: skills, level and XP reset, every
-/// enemy, projectile, area and orb cleared.
+/// enemy, projectile, area and orb cleared. Leaving through the portal (`MapCleared`) does the
+/// same without the death banner (the portal shows its own summary).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn reset_run(
+pub(super) fn reset_run(
     mut commands: Commands,
     mut died: MessageReader<HeroDied>,
+    mut cleared: MessageReader<MapCleared>,
+    mut restarted: MessageReader<RestartRun>,
     start: Res<Start>,
     debug: Res<DebugStart>,
     mut run: ResMut<Run>,
@@ -119,20 +155,25 @@ fn reset_run(
             With<Orb>,
             With<Flash>,
             With<Corpse>,
+            With<EnemyBolt>,
         )>,
     >,
 ) {
-    if died.read().count() == 0 {
+    let died = died.read().count() > 0;
+    let cleared = cleared.read().count() > 0 || restarted.read().count() > 0;
+    if !died && !cleared {
         return;
     }
-    let mins = (run.time / 60.0) as u32;
-    let secs = (run.time % 60.0) as u32;
-    notice.text = format!(
-        "Öldün! {mins}:{secs:02} dayandın, level {}, {} düşman. Haritanın başına dönüldü.",
-        run.level, run.kills
-    );
-    notice.left = 5.0;
-    info!("rnsurvivors: {}", notice.text);
+    if died {
+        let mins = (run.time / 60.0) as u32;
+        let secs = (run.time % 60.0) as u32;
+        notice.text = format!(
+            "Öldün! {mins}:{secs:02} dayandın, level {}, {} düşman. Haritanın başına dönüldü.",
+            run.level, run.kills
+        );
+        notice.left = 5.0;
+        info!("rnsurvivors: {}", notice.text);
+    }
 
     for e in &clutter {
         commands.entity(e).try_despawn();
@@ -162,6 +203,7 @@ mod system_params {
     fn systems_initialize() {
         let mut world = World::new();
         init(&mut world, contact_damage);
+        init(&mut world, apply_stats);
         init(&mut world, check_death);
         init(&mut world, reset_run);
     }

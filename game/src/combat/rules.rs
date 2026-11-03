@@ -3,6 +3,7 @@
 
 use bevy::math::{Vec2, Vec3};
 
+use crate::content::passives::{PassiveId, MAX_PASSIVES};
 use crate::content::{SkillId, MAX_SKILLS};
 
 /// The hero's starting skill.
@@ -15,7 +16,7 @@ pub const CARDS: usize = 3;
 /// Health a "can iksiri" card gives back, when there is nothing left to learn.
 pub const HEAL_CARD: f32 = 40.0;
 /// Orbs within this distance fly to the hero; within [`ORB_COLLECT`] they are taken.
-pub const ORB_MAGNET: f32 = 4.5;
+pub const ORB_MAGNET: f32 = 6.5;
 pub const ORB_COLLECT: f32 = 0.9;
 pub const ORB_SPEED: f32 = 15.0;
 
@@ -93,8 +94,9 @@ impl Loadout {
         self.0.iter().find(|(s, _)| *s == id).map(|(_, l)| *l)
     }
 
-    /// Applies a card. A new skill is ignored when the loadout is full or already has it; an
-    /// upgrade is ignored past the skill's max. Healing is not a loadout change.
+    /// Applies a skill card. A new skill is ignored when the loadout is full or already has it;
+    /// an upgrade is ignored past the skill's max; an evolution needs both parents at their max
+    /// and replaces the first. Passive and heal cards are not skill changes.
     pub fn apply(&mut self, card: Card) {
         match card {
             Card::New(id) => {
@@ -109,7 +111,51 @@ impl Loadout {
                     }
                 }
             }
-            Card::Heal => {}
+            Card::Evolve(from, into) => {
+                if self.evolution_ready(from) == Some(into) {
+                    if let Some(entry) = self.0.iter_mut().find(|(s, _)| *s == from) {
+                        *entry = (into, 1);
+                    }
+                }
+            }
+            Card::NewPassive(_) | Card::UpgradePassive(..) | Card::Heal => {}
+        }
+    }
+
+    /// What `base` can evolve into now: it and its partner at their last level, the evolved
+    /// form not owned yet.
+    pub fn evolution_ready(&self, base: SkillId) -> Option<SkillId> {
+        let (partner, into) = base.evolution()?;
+        let maxed = |s: SkillId| self.level_of(s) == Some(s.max_level());
+        (maxed(base) && maxed(partner) && self.level_of(into).is_none()).then_some(into)
+    }
+}
+
+/// The passives the hero carries, with their levels, in the order learned.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Passives(pub Vec<(PassiveId, u8)>);
+
+impl Passives {
+    pub fn level_of(&self, id: PassiveId) -> u8 {
+        self.0.iter().find(|(p, _)| *p == id).map_or(0, |(_, l)| *l)
+    }
+
+    /// Applies a passive card, under the same rules as skills.
+    pub fn apply(&mut self, card: Card) {
+        match card {
+            Card::NewPassive(id) => {
+                if self.0.len() < MAX_PASSIVES && self.level_of(id) == 0 {
+                    self.0.push((id, 1));
+                }
+            }
+            Card::UpgradePassive(id, to) => {
+                if let Some(entry) = self.0.iter_mut().find(|(p, _)| *p == id) {
+                    if to == entry.1 + 1 && to <= id.max_level() {
+                        entry.1 = to;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -121,13 +167,39 @@ pub enum Card {
     New(SkillId),
     /// Raise an owned skill to this level.
     Upgrade(SkillId, u8),
+    /// Fuse a maxed skill (with its maxed partner) into its evolved form.
+    Evolve(SkillId, SkillId),
+    /// Take a passive at level 1.
+    NewPassive(PassiveId),
+    /// Raise an owned passive to this level.
+    UpgradePassive(PassiveId, u8),
     /// Nothing left to learn: heal instead.
     Heal,
 }
 
-/// Every card the loadout could take now: the next level of each owned skill below its max, and
-/// each unowned skill while there is room.
-pub fn card_pool(loadout: &Loadout) -> Vec<Card> {
+/// Evolution cards the loadout earned.
+pub fn evolution_cards(loadout: &Loadout) -> Vec<Card> {
+    loadout
+        .0
+        .iter()
+        .filter_map(|(s, _)| {
+            loadout
+                .evolution_ready(*s)
+                .map(|into| Card::Evolve(*s, into))
+        })
+        .collect()
+}
+
+/// Whether `base` lives on as its evolved form (then it is not learnable again).
+fn evolved_away(loadout: &Loadout, base: SkillId) -> bool {
+    base.evolution()
+        .is_some_and(|(_, into)| loadout.level_of(into).is_some())
+}
+
+/// Every ordinary card the hero could take now: the next level of each owned skill or passive
+/// below its max, and each unowned skill or passive while there is room. Evolved forms are never
+/// offered as new skills.
+pub fn card_pool(loadout: &Loadout, passives: &Passives) -> Vec<Card> {
     let mut pool: Vec<Card> = loadout
         .0
         .iter()
@@ -138,24 +210,96 @@ pub fn card_pool(loadout: &Loadout) -> Vec<Card> {
         pool.extend(
             SkillId::ALL
                 .into_iter()
-                .filter(|s| loadout.level_of(*s).is_none())
+                .filter(|s| loadout.level_of(*s).is_none() && !evolved_away(loadout, *s))
                 .map(Card::New),
+        );
+    }
+    pool.extend(
+        passives
+            .0
+            .iter()
+            .filter(|(p, l)| *l < p.max_level())
+            .map(|(p, l)| Card::UpgradePassive(*p, l + 1)),
+    );
+    if passives.0.len() < MAX_PASSIVES {
+        pool.extend(
+            PassiveId::ALL
+                .into_iter()
+                .filter(|p| passives.level_of(*p) == 0)
+                .map(Card::NewPassive),
         );
     }
     pool
 }
 
-/// Draws up to `n` distinct cards from the pool; a maxed-out loadout gets a single heal card.
-pub fn roll_cards(loadout: &Loadout, rng: &mut Rng, n: usize) -> Vec<Card> {
-    let mut pool = card_pool(loadout);
-    if pool.is_empty() {
-        return vec![Card::Heal];
-    }
-    let mut out = Vec::with_capacity(n);
+/// Draws up to `n` distinct cards: an earned evolution always comes first, the rest at random
+/// from the pool; with nothing left at all, a single heal card.
+pub fn roll_cards(loadout: &Loadout, passives: &Passives, rng: &mut Rng, n: usize) -> Vec<Card> {
+    let mut out = evolution_cards(loadout);
+    out.truncate(n);
+    let mut pool = card_pool(loadout, passives);
     while out.len() < n && !pool.is_empty() {
         out.push(pool.swap_remove(rng.below(pool.len())));
     }
+    if out.is_empty() {
+        out.push(Card::Heal);
+    }
     out
+}
+
+// ---------------------------------------------------------------------------------------------
+// The hero's stats from passives.
+
+/// Base critical-hit chance, and how hard a crit hits.
+pub const BASE_CRIT: f32 = 0.05;
+pub const CRIT_MULTIPLIER: f32 = 2.0;
+/// Cooldowns never go below this fraction of their table value.
+pub const MIN_COOLDOWN_MUL: f32 = 0.5;
+
+/// What the passives add up to.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Stats {
+    pub damage_mul: f32,
+    pub cooldown_mul: f32,
+    pub speed_mul: f32,
+    pub max_health: f32,
+    pub magnet_mul: f32,
+    pub crit_chance: f32,
+    pub xp_mul: f32,
+}
+
+impl Stats {
+    pub fn from_passives(p: &Passives) -> Self {
+        let b = |id: PassiveId| id.bonus(p.level_of(id));
+        Stats {
+            damage_mul: 1.0 + b(PassiveId::Power),
+            cooldown_mul: (1.0 - b(PassiveId::Haste)).max(MIN_COOLDOWN_MUL),
+            speed_mul: 1.0 + b(PassiveId::Swiftness),
+            max_health: HERO_MAX_HEALTH + b(PassiveId::Vitality),
+            magnet_mul: 1.0 + b(PassiveId::Attraction),
+            crit_chance: (BASE_CRIT + b(PassiveId::Precision)).min(1.0),
+            xp_mul: 1.0 + b(PassiveId::Wisdom),
+        }
+    }
+}
+
+impl Default for Stats {
+    fn default() -> Self {
+        Self::from_passives(&Passives::default())
+    }
+}
+
+/// One hit's damage: the base times the damage bonus, doubled on a crit (`roll` in `0..1`).
+/// Returns the damage and whether it crit.
+pub fn hit_damage(base: f32, stats: &Stats, roll: f32) -> (f32, bool) {
+    let crit = roll < stats.crit_chance;
+    let mul = if crit { CRIT_MULTIPLIER } else { 1.0 };
+    (base * stats.damage_mul * mul, crit)
+}
+
+/// XP an orb gives under the XP bonus (never less than its face value).
+pub fn orb_xp(face: u32, stats: &Stats) -> u32 {
+    ((face as f32 * stats.xp_mul).round() as u32).max(face)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -288,6 +432,29 @@ pub const CORPSE_SECS: f32 = 2.2;
 pub const CORPSE_SINK: f32 = 0.7;
 pub const CORPSE_DEPTH: f32 = 1.5;
 
+/// A ranged enemy's step: close in to `keep` yards, back off when the hero comes within 70% of
+/// it, else hold.
+pub fn kite_step(pos: Vec3, hero: Vec3, speed: f32, dt: f32, keep: f32) -> Vec3 {
+    let d = flat_dist(pos, hero);
+    if d > keep {
+        chase_step(pos, hero, speed, dt, keep)
+    } else if d < keep * 0.7 && d > 1e-4 {
+        let away = (pos - hero).with_y(0.0).normalize_or_zero();
+        pos + away * (speed * dt).min(keep * 0.7 - d)
+    } else {
+        pos
+    }
+}
+
+/// How grown a fuse's warning circle is, `0..=1`, with `left` of `total` seconds to go.
+pub fn fuse_progress(left: f32, total: f32) -> f32 {
+    if total <= 0.0 {
+        1.0
+    } else {
+        (1.0 - left / total).clamp(0.0, 1.0)
+    }
+}
+
 /// Whether an enemy `dist` yards from the hero, with body `radius`, touches it.
 pub fn touching(dist: f32, radius: f32) -> bool {
     dist <= radius + CONTACT_REACH
@@ -362,6 +529,28 @@ pub fn parse_skills(s: &str) -> Loadout {
     out
 }
 
+/// Parses `RNS_PASSIVES`: `all` (every passive at max, past the limit) or a comma list of
+/// `key[:level]`, under the same rules as [`parse_skills`].
+pub fn parse_passives(s: &str) -> Passives {
+    if s.trim().eq_ignore_ascii_case("all") {
+        return Passives(PassiveId::ALL.map(|p| (p, p.max_level())).to_vec());
+    }
+    let mut out = Passives::default();
+    for part in s.split(',') {
+        let (key, lvl) = match part.split_once(':') {
+            Some((k, l)) => (k, l.trim().parse::<u8>().unwrap_or(1)),
+            None => (part, 1),
+        };
+        let Some(id) = PassiveId::from_key(key) else {
+            continue;
+        };
+        if out.level_of(id) == 0 && out.0.len() < MAX_PASSIVES {
+            out.0.push((id, lvl.clamp(1, id.max_level())));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,37 +595,69 @@ mod tests {
         )
     }
 
+    fn maxed_passives() -> Passives {
+        Passives(
+            PassiveId::ALL[..MAX_PASSIVES]
+                .iter()
+                .map(|p| (*p, p.max_level()))
+                .collect(),
+        )
+    }
+
+    fn check_legal(lo: &Loadout, pa: &Passives, cards: &[Card]) {
+        for (i, c) in cards.iter().enumerate() {
+            assert!(!cards[..i].contains(c), "duplicate {c:?}");
+            match *c {
+                Card::New(id) => {
+                    assert!(lo.0.len() < MAX_SKILLS && lo.level_of(id).is_none());
+                    assert!(!id.is_evolved(), "evolved forms are never new cards");
+                }
+                Card::Upgrade(id, to) => assert_eq!(lo.level_of(id), Some(to - 1)),
+                Card::Evolve(from, into) => assert_eq!(lo.evolution_ready(from), Some(into)),
+                Card::NewPassive(p) => {
+                    assert!(pa.0.len() < MAX_PASSIVES && pa.level_of(p) == 0)
+                }
+                Card::UpgradePassive(p, to) => assert_eq!(pa.level_of(p), to - 1),
+                Card::Heal => panic!("heal with cards left"),
+            }
+        }
+    }
+
     #[test]
     fn cards_are_distinct_and_legal() {
         let mut rng = Rng::new(1);
-        for seed_round in 0..200 {
-            let lo = if seed_round % 2 == 0 {
+        let pa = Passives(vec![(PassiveId::Power, 2)]);
+        for round in 0..200 {
+            let lo = if round % 2 == 0 {
                 Loadout::starting()
             } else {
                 full_loadout(2)
             };
-            let cards = roll_cards(&lo, &mut rng, CARDS);
+            let cards = roll_cards(&lo, &pa, &mut rng, CARDS);
             assert_eq!(cards.len(), CARDS);
-            for (i, c) in cards.iter().enumerate() {
-                assert!(!cards[..i].contains(c), "duplicate {c:?}");
-                match *c {
-                    Card::New(id) => {
-                        assert!(lo.0.len() < MAX_SKILLS);
-                        assert!(lo.level_of(id).is_none());
-                    }
-                    Card::Upgrade(id, to) => assert_eq!(lo.level_of(id), Some(to - 1)),
-                    Card::Heal => panic!("heal with cards left"),
-                }
-            }
+            check_legal(&lo, &pa, &cards);
         }
     }
 
     #[test]
     fn a_full_loadout_offers_no_new_skills() {
         let lo = full_loadout(1);
-        assert!(card_pool(&lo)
+        assert!(!card_pool(&lo, &Passives::default())
             .iter()
-            .all(|c| matches!(c, Card::Upgrade(..))));
+            .any(|c| matches!(c, Card::New(_))));
+    }
+
+    #[test]
+    fn full_passives_offer_no_new_passives() {
+        let pa = Passives(
+            PassiveId::ALL[..MAX_PASSIVES]
+                .iter()
+                .map(|p| (*p, 1))
+                .collect(),
+        );
+        assert!(!card_pool(&Loadout::starting(), &pa)
+            .iter()
+            .any(|c| matches!(c, Card::NewPassive(_))));
     }
 
     #[test]
@@ -444,31 +665,75 @@ mod tests {
         let mut lo = full_loadout(1);
         lo.0[0].1 = lo.0[0].0.max_level();
         let maxed = lo.0[0].0;
-        assert!(!card_pool(&lo).iter().any(|c| match c {
-            Card::Upgrade(id, _) | Card::New(id) => *id == maxed,
-            Card::Heal => false,
-        }));
+        assert!(!card_pool(&lo, &Passives::default())
+            .iter()
+            .any(|c| match c {
+                Card::Upgrade(id, _) | Card::New(id) => *id == maxed,
+                _ => false,
+            }));
     }
 
-    #[test]
-    fn everything_maxed_gives_a_heal_card() {
-        let lo = Loadout(
+    fn all_maxed() -> Loadout {
+        Loadout(
             SkillId::ALL[..MAX_SKILLS]
                 .iter()
                 .map(|s| (*s, s.max_level()))
                 .collect(),
+        )
+    }
+
+    #[test]
+    fn everything_maxed_and_evolved_gives_a_heal_card() {
+        let mut lo = all_maxed();
+        for c in evolution_cards(&lo.clone()) {
+            lo.apply(c);
+        }
+        assert!(evolution_cards(&lo).is_empty());
+        assert_eq!(
+            roll_cards(&lo, &maxed_passives(), &mut Rng::new(3), CARDS),
+            vec![Card::Heal]
         );
-        assert_eq!(roll_cards(&lo, &mut Rng::new(3), CARDS), vec![Card::Heal]);
+    }
+
+    #[test]
+    fn evolutions_need_both_parents_maxed_and_come_first() {
+        let fb = SkillId::Frostbolt;
+        let nova = SkillId::FrostNova;
+        let mut lo = Loadout(vec![(fb, fb.max_level()), (nova, nova.max_level() - 1)]);
+        assert_eq!(lo.evolution_ready(fb), None, "partner not maxed");
+        lo.0[1].1 = nova.max_level();
+        assert_eq!(lo.evolution_ready(fb), Some(SkillId::WinterBolts));
+        let cards = roll_cards(&lo, &Passives::default(), &mut Rng::new(9), CARDS);
+        assert_eq!(cards[0], Card::Evolve(fb, SkillId::WinterBolts));
+        lo.apply(cards[0]);
+        assert_eq!(
+            lo.0,
+            vec![(SkillId::WinterBolts, 1), (nova, nova.max_level())]
+        );
+        assert!(evolution_cards(&lo).is_empty(), "evolves once");
+        assert!(
+            !card_pool(&lo, &Passives::default()).contains(&Card::New(fb)),
+            "an evolved skill does not come back as new"
+        );
+        // An evolution card without its conditions changes nothing.
+        let mut early = Loadout(vec![(fb, 1)]);
+        early.apply(Card::Evolve(fb, SkillId::WinterBolts));
+        assert_eq!(early.0, vec![(fb, 1)]);
     }
 
     #[test]
     fn few_options_give_fewer_cards() {
-        let mut lo = full_loadout(1);
-        for e in lo.0.iter_mut().skip(1) {
-            e.1 = e.0.max_level();
-        }
-        let cards = roll_cards(&lo, &mut Rng::new(5), CARDS);
-        assert_eq!(cards, vec![Card::Upgrade(lo.0[0].0, 2)]);
+        // Six skills, only Blink can still grow, no evolution pending, every passive maxed.
+        let lo = Loadout(vec![
+            (SkillId::Blink, 1),
+            (SkillId::Blizzard, SkillId::Blizzard.max_level()),
+            (SkillId::FrostNova, SkillId::FrostNova.max_level()),
+            (SkillId::WinterBolts, 1),
+            (SkillId::Pyroblast, 1),
+            (SkillId::ArcaneStorm, 1),
+        ]);
+        let cards = roll_cards(&lo, &maxed_passives(), &mut Rng::new(5), CARDS);
+        assert_eq!(cards, vec![Card::Upgrade(SkillId::Blink, 2)]);
     }
 
     #[test]
@@ -493,22 +758,71 @@ mod tests {
             maxed.level_of(SkillId::Blink),
             Some(SkillId::Blink.max_level())
         );
+
+        let mut pa = Passives::default();
+        pa.apply(Card::NewPassive(PassiveId::Haste));
+        pa.apply(Card::UpgradePassive(PassiveId::Haste, 3)); // skip refused
+        assert_eq!(pa.level_of(PassiveId::Haste), 1);
+        pa.apply(Card::UpgradePassive(PassiveId::Haste, 2));
+        assert_eq!(pa.level_of(PassiveId::Haste), 2);
+        for p in PassiveId::ALL {
+            pa.apply(Card::NewPassive(p));
+        }
+        assert_eq!(pa.0.len(), MAX_PASSIVES);
     }
 
     #[test]
     fn a_whole_run_of_picks_never_breaks_the_rules() {
         let mut rng = Rng::new(42);
         let mut lo = Loadout::starting();
-        for _ in 0..80 {
-            let cards = roll_cards(&lo, &mut rng, CARDS);
+        let mut pa = Passives::default();
+        let mut evolved = 0;
+        for _ in 0..150 {
+            let cards = roll_cards(&lo, &pa, &mut rng, CARDS);
+            if cards == [Card::Heal] {
+                break;
+            }
+            check_legal(&lo, &pa, &cards);
             let pick = cards[rng.below(cards.len())];
+            evolved += matches!(pick, Card::Evolve(..)) as u32;
             lo.apply(pick);
-            assert!(lo.0.len() <= MAX_SKILLS);
+            pa.apply(pick);
+            assert!(lo.0.len() <= MAX_SKILLS && pa.0.len() <= MAX_PASSIVES);
             for (s, l) in &lo.0 {
                 assert!(*l >= 1 && *l <= s.max_level());
             }
         }
-        assert_eq!(roll_cards(&lo, &mut rng, CARDS), vec![Card::Heal]);
+        assert_eq!(roll_cards(&lo, &pa, &mut rng, CARDS), vec![Card::Heal]);
+        assert!(evolved <= 3);
+    }
+
+    #[test]
+    fn stats_from_passives() {
+        let base = Stats::default();
+        assert_eq!(base.damage_mul, 1.0);
+        assert_eq!(base.max_health, HERO_MAX_HEALTH);
+        assert_eq!(base.crit_chance, BASE_CRIT);
+        let s = Stats::from_passives(&maxed_passives());
+        assert!(s.damage_mul > 1.4 && s.cooldown_mul < 0.7 && s.cooldown_mul >= MIN_COOLDOWN_MUL);
+        assert!(s.max_health > HERO_MAX_HEALTH);
+    }
+
+    #[test]
+    fn hits_and_crits() {
+        let s = Stats {
+            damage_mul: 1.5,
+            crit_chance: 0.25,
+            ..Stats::default()
+        };
+        assert_eq!(hit_damage(10.0, &s, 0.9), (15.0, false));
+        assert_eq!(hit_damage(10.0, &s, 0.1), (30.0, true));
+        assert_eq!(orb_xp(3, &Stats::default()), 3);
+        let wise = Stats {
+            xp_mul: 1.5,
+            ..Stats::default()
+        };
+        assert_eq!(orb_xp(3, &wise), 5);
+        assert_eq!(orb_xp(1, &wise), 2);
     }
 
     #[test]
@@ -609,6 +923,26 @@ mod tests {
     }
 
     #[test]
+    fn ranged_enemies_hold_their_distance() {
+        let hero = Vec3::ZERO;
+        let far = kite_step(Vec3::X * 20.0, hero, 3.0, 1.0, 10.0);
+        assert!((far.x - 17.0).abs() < 1e-5, "closes in");
+        let near = kite_step(Vec3::X * 4.0, hero, 3.0, 1.0, 10.0);
+        assert!(near.x > 4.0, "backs off");
+        let held = kite_step(Vec3::X * 9.0, hero, 3.0, 1.0, 10.0);
+        assert_eq!(held, Vec3::X * 9.0);
+        assert!(kite_step(Vec3::X * 12.0, hero, 30.0, 1.0, 10.0).x >= 10.0 - 1e-5);
+    }
+
+    #[test]
+    fn fuses_grow() {
+        assert_eq!(fuse_progress(1.0, 1.0), 0.0);
+        assert_eq!(fuse_progress(0.0, 1.0), 1.0);
+        assert_eq!(fuse_progress(0.25, 1.0), 0.75);
+        assert_eq!(fuse_progress(0.0, 0.0), 1.0);
+    }
+
+    #[test]
     fn contact_reach() {
         assert!(touching(1.0, 0.5));
         assert!(!touching(1.2, 0.5));
@@ -659,6 +993,15 @@ mod tests {
         assert!((corpse_depth(0.0) - CORPSE_DEPTH).abs() < 1e-6);
         assert!(corpse_depth(CORPSE_SINK / 2.0) > 0.0);
         assert!((corpse_depth(-1.0) - CORPSE_DEPTH).abs() < 1e-6);
+    }
+
+    #[test]
+    fn debug_passives_parse() {
+        assert_eq!(parse_passives("all").0.len(), PassiveId::ALL.len());
+        assert_eq!(
+            parse_passives("power:3, haste, x, power:5").0,
+            vec![(PassiveId::Power, 3), (PassiveId::Haste, 1)]
+        );
     }
 
     #[test]

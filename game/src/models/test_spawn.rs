@@ -78,15 +78,19 @@ impl TestSpawn {
     }
 }
 
-/// The lowest display id whose model lives in `folder` and has a skin variation (so it draws
-/// textured), from `(display id, model path, skinned)` rows.
-pub fn pick_by_folder<'a>(
+/// Every display id whose model lives in `folder` and has a skin variation (so it draws
+/// textured), lowest first, from `(display id, model path, skinned)` rows.
+pub fn displays_by_folder<'a>(
     rows: impl Iterator<Item = (u32, &'a str, bool)>,
     folder: &str,
-) -> Option<u32> {
-    rows.filter(|(_, path, skinned)| *skinned && paths::same_path(paths::model_dir(path), folder))
+) -> Vec<u32> {
+    let mut ids: Vec<u32> = rows
+        .filter(|(_, path, skinned)| *skinned && paths::same_path(paths::model_dir(path), folder))
         .map(|(id, _, _)| id)
-        .min()
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
 }
 
 /// The animation state F9 steps to after `step` presses.
@@ -224,11 +228,21 @@ mod tests {
             (5, "Creature\\Wolf\\Wolf.mdx", true),
         ];
         assert_eq!(
-            pick_by_folder(rows.into_iter(), "Creature\\Kobold"),
+            displays_by_folder(rows.into_iter(), "Creature\\Kobold")
+                .first()
+                .copied(),
             Some(45)
         );
-        assert_eq!(pick_by_folder(rows.into_iter(), "Creature\\Wolf"), Some(5));
-        assert_eq!(pick_by_folder(rows.into_iter(), "Creature\\Spider"), None);
+        assert_eq!(
+            displays_by_folder(rows.into_iter(), "Creature\\Wolf"),
+            vec![5]
+        );
+        assert!(displays_by_folder(rows.into_iter(), "Creature\\Spider").is_empty());
+        assert_eq!(
+            displays_by_folder(rows.into_iter(), "Creature\\Kobold"),
+            vec![45, 50],
+            "every skin, lowest first"
+        );
     }
 
     #[test]

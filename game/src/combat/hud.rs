@@ -240,7 +240,9 @@ fn update_skill_bar(
                     ..default()
                 },
                 BackgroundColor(color.with_alpha(0.35)),
-                BorderColor::all(if maxed {
+                BorderColor::all(if id.is_evolved() {
+                    Color::srgb(1.0, 0.45, 1.0)
+                } else if maxed {
                     Color::srgb(1.0, 0.82, 0.0)
                 } else {
                     Color::srgba(0.0, 0.0, 0.0, 0.9)

@@ -48,11 +48,13 @@ fn collect_orbs(
         return;
     };
     let dt = time.delta_secs();
+    let stats = rules::Stats::from_passives(&run.passives);
+    let magnet = ORB_MAGNET * stats.magnet_mul;
     let mut gained = 0;
     for (e, mut xf, orb) in &mut orbs {
-        let (pos, taken) = rules::orb_step(xf.translation, hero.translation, ORB_MAGNET, dt);
+        let (pos, taken) = rules::orb_step(xf.translation, hero.translation, magnet, dt);
         if taken {
-            gained += orb.xp;
+            gained += rules::orb_xp(orb.xp, &stats);
             commands.entity(e).try_despawn();
         } else {
             // Lift toward the hero's chest as it flies in.

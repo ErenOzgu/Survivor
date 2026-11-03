@@ -5,6 +5,7 @@
 use bevy::prelude::*;
 
 use super::art::{WowArt, STATUS_BAR};
+use super::bosses::Boss;
 use super::enemies::Enemy;
 use super::CombatSet;
 use crate::content::EnemyKind;
@@ -26,7 +27,7 @@ const PLATE_RED: Color = Color::srgb(0.85, 0.1, 0.05);
 /// How far above an enemy's feet its bar floats, yards.
 pub fn bar_height(kind: EnemyKind) -> f32 {
     match kind {
-        EnemyKind::Kobold => 2.1,
+        EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => 2.1,
         EnemyKind::Wolf => 1.7,
         EnemyKind::Spider => 1.6,
         EnemyKind::GnollChief => 3.6,
@@ -66,7 +67,8 @@ fn update_plates(
     mut commands: Commands,
     art: Res<WowArt>,
     cams: Query<(&Camera, &GlobalTransform), With<FollowCam>>,
-    enemies: Query<(Entity, &GlobalTransform, &Enemy, Has<HasPlate>)>,
+    // Elites and bosses have their own named bar (`boss_hud`).
+    enemies: Query<(Entity, &GlobalTransform, &Enemy, Has<HasPlate>), Without<Boss>>,
     mut plates: Query<(Entity, &Plate, &mut Node, &mut Visibility, &Children)>,
     mut fills: Query<&mut Node, (With<PlateFill>, Without<Plate>)>,
 ) {
