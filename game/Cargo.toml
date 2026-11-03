@@ -10,6 +10,7 @@ benilla-world.workspace = true
 benilla-assets.workspace = true
 benilla-formats.workspace = true
 bevy.workspace = true
+avian3d.workspace = true
 anyhow = "1"
 
 [[bin]]

@@ -12,6 +12,7 @@ pub mod boss_hud;
 pub mod boss_rules;
 pub mod bosses;
 pub mod cards;
+pub mod collide;
 pub mod enemies;
 pub mod flat;
 pub mod fx;
@@ -102,6 +103,7 @@ impl Plugin for CombatPlugin {
                 gear_ui::GearUiPlugin,
                 talent_ui::TalentUiPlugin,
                 fx::FxPlugin,
+                collide::CollidePlugin,
             ));
     }
 }

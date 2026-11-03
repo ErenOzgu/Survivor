@@ -45,6 +45,9 @@ impl Plugin for EnemiesPlugin {
     }
 }
 
+/// Enemies closer than this to the hero collide with the world.
+const COLLIDE_WITHIN: f32 = 32.0;
+
 /// One enemy. Its `Transform` is its feet on the terrain.
 #[derive(Component, Debug)]
 pub struct Enemy {
@@ -193,6 +196,7 @@ fn spawn_waves(
 
 /// Enemies run at the hero, push apart a little, follow the ground and face where they go.
 /// One left far behind is put back on the ring.
+#[allow(clippy::too_many_arguments)]
 fn move_enemies(
     time: Res<Time>,
     mut rng: ResMut<CombatRng>,
@@ -200,6 +204,8 @@ fn move_enemies(
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     heroes: Query<&Transform, (With<Hero>, Without<Enemy>)>,
     mut enemies: Query<(&mut Transform, &mut Enemy)>,
+    world: benilla_world::collision::WorldCollision,
+    mut shape: Local<Option<avian3d::prelude::Collider>>,
 ) {
     let Ok(hero) = heroes.single() else {
         return;
@@ -248,6 +254,11 @@ fn move_enemies(
             }
         }
         let mut new_pos = next + push.clamp_length_max(speed.max(1.0) * dt);
+        // Walls stop enemies near the hero too (far ones are off screen and only cost).
+        if rules::flat_dist(pos, hero_pos) < COLLIDE_WITHIN {
+            let shape = shape.get_or_insert_with(super::collide::body);
+            new_pos = pos + super::collide::swept_move(&world, shape, pos, new_pos - pos);
+        }
 
         let ground = match (&streamer, &adt_tiles) {
             (Some(s), Some(a)) => terrain_height_under_cached(s, a, new_pos, &mut cache),

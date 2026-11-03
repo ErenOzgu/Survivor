@@ -4806,6 +4806,7 @@ name = "rnsurvivors"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "avian3d",
  "benilla-assets",
  "benilla-formats",
  "benilla-world",

@@ -13,6 +13,8 @@ license = "MIT OR Apache-2.0"
 benilla-world = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf" }
 benilla-assets = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf", default-features = false }
 benilla-formats = { git = "https://github.com/Arnesen/wenilla", rev = "ea514d8bb724c0571fc74183f23de7b1bbb303cf", default-features = false }
+# The engine's physics, for world collision queries; the same version the engine uses.
+avian3d = "0.6"
 # The engine workspace's bevy feature set, verbatim: a different set would build bevy twice or
 # bring back the audio stack the engine leaves out.
 bevy = { version = "0.18.1", default-features = false, features = [
