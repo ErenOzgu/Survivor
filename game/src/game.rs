@@ -239,7 +239,17 @@ fn move_hero(
         use crate::models::AnimState;
         let backing = back && hero.vel.length() > 0.5;
         if in_air {
+            // The take-off clip once, then the air loop under it.
+            if !was_air {
+                anim.play(AnimState::JumpStart);
+            }
             anim.state = AnimState::Jump;
+        } else if was_air {
+            anim.state = AnimState::Idle;
+            // Landing on the spot bends the knees; running on, the gait picks straight up.
+            if hero.vel.length() < 1.5 {
+                anim.play(AnimState::JumpLand);
+            }
         } else if backing {
             anim.state = AnimState::Backpedal;
         } else if (was_air && anim.state == AnimState::Jump) || anim.state == AnimState::Backpedal {

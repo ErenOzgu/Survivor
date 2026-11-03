@@ -28,6 +28,7 @@ pub mod ids {
     pub const SPELL_CAST: u16 = 32;
     pub const JUMP_START: u16 = 37;
     pub const JUMP: u16 = 38;
+    pub const JUMP_END: u16 = 39;
     pub const SPELL_CAST_DIRECTED: u16 = 53;
     pub const SPELL_CAST_OMNI: u16 = 54;
 }
@@ -48,6 +49,9 @@ pub enum AnimState {
     Jump,
     /// Walking backwards (S), facing forward.
     Backpedal,
+    /// The take-off and the landing of a jump, played once around [`Self::Jump`].
+    JumpStart,
+    JumpLand,
 }
 
 impl AnimState {
@@ -62,8 +66,10 @@ impl AnimState {
             AnimState::Attack => &[ATTACK_UNARMED, ATTACK_1H, ATTACK_2H, ATTACK_2HL],
             AnimState::Hit => &[COMBAT_WOUND, STAND_WOUND],
             AnimState::Death => &[DEATH, DEAD],
-            AnimState::Jump => &[JUMP, JUMP_START, STAND],
+            AnimState::Jump => &[JUMP, STAND],
             AnimState::Backpedal => &[WALK_BACKWARDS, WALK],
+            AnimState::JumpStart => &[JUMP_START],
+            AnimState::JumpLand => &[JUMP_END],
         }
     }
 
@@ -81,7 +87,14 @@ impl AnimState {
 
     /// Whether this is an action that plays once over the current state.
     pub fn is_action(self) -> bool {
-        matches!(self, AnimState::Cast | AnimState::Attack | AnimState::Hit)
+        matches!(
+            self,
+            AnimState::Cast
+                | AnimState::Attack
+                | AnimState::Hit
+                | AnimState::JumpStart
+                | AnimState::JumpLand
+        )
     }
 
     /// Whether it is a locomotion state, which [`AutoLocomotion`] may overwrite.

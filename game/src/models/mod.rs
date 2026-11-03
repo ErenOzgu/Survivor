@@ -99,11 +99,21 @@ pub fn item_look(data: &ModelData, slot: GearSlot, seed: u32) -> Option<(u32, Op
     let cat = data.tables.as_ref()?.items.as_ref()?;
     let ids = gear::slot_displays(cat.iter(), slot);
     let id = *ids.get(seed as usize % ids.len().max(1))?;
+    // The catalog's icon is already the full `Interface\\Icons\\…` path.
     let icon = cat
         .get(id)
         .and_then(|d| d.icon.clone())
-        .map(|i| format!("Interface\\Icons\\{i}"));
+        .map(|i| icon_path(&i));
     Some((id, icon))
+}
+
+/// An inventory icon's full path, whether the table gave the bare name or the whole path.
+pub fn icon_path(icon: &str) -> String {
+    if icon.to_ascii_lowercase().starts_with("interface\\") {
+        icon.to_string()
+    } else {
+        format!("Interface\\Icons\\{icon}")
+    }
 }
 
 /// Whether a model path names what we look for: contains one of `include` and none of
@@ -267,6 +277,18 @@ mod tests {
             .spawn((Visibility::default(), ModelPlaceholder, ChildOf(owner)))
             .id();
         (owner, child)
+    }
+
+    #[test]
+    fn icon_paths_are_not_prefixed_twice() {
+        assert_eq!(
+            icon_path("INV_Helmet_01"),
+            "Interface\\Icons\\INV_Helmet_01"
+        );
+        assert_eq!(
+            icon_path("Interface\\Icons\\INV_Helmet_01"),
+            "Interface\\Icons\\INV_Helmet_01"
+        );
     }
 
     #[test]

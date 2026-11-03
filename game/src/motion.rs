@@ -62,10 +62,10 @@ pub fn backpedals(input: Vec2) -> bool {
     input.y < 0.0
 }
 
-/// A jump's take-off speed (yards per second) and the pull back down: about 1.3 yards high,
-/// two thirds of a second in the air.
-pub const JUMP_SPEED: f32 = 8.0;
-pub const GRAVITY: f32 = 24.0;
+/// A jump's take-off speed (yards per second) and the pull back down: about 1.5 yards high,
+/// some 0.85 seconds in the air, a soft arc the take-off and landing clips fit.
+pub const JUMP_SPEED: f32 = 7.4;
+pub const GRAVITY: f32 = 18.0;
 
 /// One frame of a jump: the height over the ground and the upward speed after `dt`; both end at 0
 /// on landing.
@@ -145,8 +145,8 @@ mod tests {
                 break;
             }
         }
-        assert!(peak > 1.0 && peak < 1.6, "{peak}");
-        assert!((30..60).contains(&frames), "{frames}");
+        assert!(peak > 1.2 && peak < 1.8, "{peak}");
+        assert!((40..65).contains(&frames), "{frames}");
         assert_eq!(jump_step(0.0, 0.0, 0.1), (0.0, 0.0));
     }
 
