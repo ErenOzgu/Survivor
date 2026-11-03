@@ -98,6 +98,12 @@ oynanabilir bir savaş döngüsü kurar:
   eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
   (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
   Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Ölüm pasifleri** (seviye kartlarında):
+  - **Patlayıcı Ölüm:** ölen düşman patlar, en yüksek canının %15'i (seviye başına) kadar
+    hasarı 4 yarda içindekilere verir. Patlamanın öldürdükleri yeniden patlamaz.
+  - **Kanatan Ölüm:** ölen düşman 5 yarda içindekileri kanatır; 5 sn'de kendi en yüksek
+    canlarının %8'i (seviye başına) kadar hasar alırlar.
+- **Hareket:** Space zıplar; S geri geri yürür (%60 hızla, ileri bakarak).
 - **Karakter penceresi (I):** WoW'un kendi karakter penceresi (dokuları istemciden): solda ve
   sağda eşya yuvaları (oyunun 6 yuvası dolu, yüzük/kolye/pelerin gibi diğerleri ileride için soluk),
   ortada karakterin canlı görüntüsü (pencere açıkken önünde duran küçük bir kamerayla), altında iki

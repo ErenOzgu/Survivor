@@ -33,6 +33,7 @@ impl Plugin for EnemiesPlugin {
                     enemy_attacks,
                     move_enemy_bolts,
                     animate_enemies,
+                    tick_bleeds,
                 )
                     .chain()
                     .in_set(CombatSet::Act)
@@ -40,7 +41,9 @@ impl Plugin for EnemiesPlugin {
             )
             .add_systems(
                 Update,
-                (kill_enemies, tick_corpses).in_set(CombatSet::Resolve),
+                (death_passives, kill_enemies, tick_corpses)
+                    .chain()
+                    .in_set(CombatSet::Resolve),
             );
     }
 }
@@ -69,6 +72,10 @@ pub struct Enemy {
     pub hit_flash: f32,
     /// Seconds left of a critical hit's knock-back.
     pub knock: f32,
+    /// A bleed (Kanatan Ölüm): damage per second, seconds left, and the next tick's wait.
+    pub bleed_dps: f32,
+    pub bleed_left: f32,
+    pub bleed_tick: f32,
     /// Hit since its animation last looked (a flinch may play).
     pub just_hit: bool,
     /// Seconds to its next attack swing while touching the hero.
@@ -103,6 +110,9 @@ impl Enemy {
             hit_flash: 0.0,
             knock: 0.0,
             took_skill: None,
+            bleed_dps: 0.0,
+            bleed_left: 0.0,
+            bleed_tick: 0.0,
             just_hit: false,
             attack_cd: 0.0,
             took: 0.0,
@@ -489,6 +499,83 @@ pub struct Corpse {
     ground: f32,
 }
 
+/// Seconds between a bleed's hits.
+const BLEED_TICK: f32 = 0.5;
+
+/// The death passives, before the dead are cleared: a dying enemy bursts (Patlayıcı Ölüm) and
+/// leaves a bleed on those near it (Kanatan Ölüm). A burst's kills do not burst again.
+fn death_passives(
+    run: Res<Run>,
+    mut commands: Commands,
+    art: Res<super::art::WowArt>,
+    assets: Res<Placeholders>,
+    mut budget: ResMut<super::fx::FxBudget>,
+    mut enemies: Query<(&Transform, &mut Enemy)>,
+) {
+    use crate::content::passives::{self as pv, PassiveId};
+    let burst = PassiveId::Volatile.bonus(run.passives.level_of(PassiveId::Volatile));
+    let bleed = PassiveId::Bloodletting.bonus(run.passives.level_of(PassiveId::Bloodletting));
+    if burst <= 0.0 && bleed <= 0.0 {
+        return;
+    }
+    let dying: Vec<(Vec3, f32, f32)> = enemies
+        .iter()
+        .filter(|(_, e)| !e.alive() && e.xp > 0)
+        .map(|(xf, e)| (xf.translation, e.max_health, e.radius))
+        .collect();
+    if dying.is_empty() {
+        return;
+    }
+    for (at, max_health, radius) in &dying {
+        if burst > 0.0 {
+            super::fx::burst(
+                &mut commands,
+                &mut budget,
+                &art,
+                &assets,
+                crate::content::SkillId::Fireball,
+                super::fx::BurstKind::Impact,
+                *at + Vec3::Y * 0.8,
+                0.0,
+            );
+        }
+        for (xf, mut e) in &mut enemies {
+            if !e.alive() {
+                continue;
+            }
+            let d = rules::flat_dist(xf.translation, *at) - e.radius - radius;
+            if burst > 0.0 && d <= pv::VOLATILE_RADIUS {
+                e.strike(max_health * burst, false);
+            }
+            if bleed > 0.0 && d <= pv::BLEED_RADIUS {
+                let dps = e.max_health * bleed / pv::BLEED_SECS;
+                e.bleed_dps = e.bleed_dps.max(dps);
+                e.bleed_left = pv::BLEED_SECS;
+            }
+        }
+    }
+}
+
+/// Bleeds hurt every half second while they run.
+fn tick_bleeds(time: Res<Time>, mut enemies: Query<&mut Enemy>) {
+    let dt = time.delta_secs();
+    for mut e in &mut enemies {
+        if e.bleed_left <= 0.0 {
+            continue;
+        }
+        e.bleed_left -= dt;
+        e.bleed_tick -= dt;
+        if e.bleed_tick <= 0.0 {
+            e.bleed_tick += BLEED_TICK;
+            let hit = e.bleed_dps * BLEED_TICK;
+            e.strike(hit, false);
+        }
+        if e.bleed_left <= 0.0 {
+            e.bleed_dps = 0.0;
+        }
+    }
+}
+
 /// Dead enemies leave an XP orb. One with a model becomes a [`Corpse`]; a placeholder is removed.
 #[allow(clippy::type_complexity)]
 pub(super) fn kill_enemies(
@@ -560,6 +647,8 @@ mod system_params {
         init(&mut world, spawn_waves);
         init(&mut world, move_enemies);
         init(&mut world, kill_enemies);
+        init(&mut world, death_passives);
+        init(&mut world, tick_bleeds);
         init(&mut world, animate_enemies);
         init(&mut world, tick_corpses);
         init(&mut world, enemy_attacks);
