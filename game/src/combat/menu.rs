@@ -112,6 +112,15 @@ pub(super) fn main_menu(
         menu.refresh = true;
         return;
     }
+    // The item tables and the art come in after the menu first shows: draw it again with them.
+    let tables = look
+        .data
+        .as_ref()
+        .is_some_and(|d| d.tables.as_ref().is_some_and(|t| t.items.is_some()));
+    if (tables && !*look.seen_tables) || art.is_changed() {
+        menu.refresh = true;
+    }
+    *look.seen_tables |= tables;
     if menu.refresh {
         menu.refresh = false;
         commands.entity(root).try_despawn();
@@ -162,13 +171,14 @@ pub(super) fn main_menu(
 
 /// What the menu draws with beyond the save: the title font, the figure, item icons.
 #[derive(bevy::ecs::system::SystemParam)]
-pub(super) struct MenuLook<'w> {
+pub(super) struct MenuLook<'w, 's> {
     title: Option<Res<'w, TitleFont>>,
     figure: Option<Res<'w, super::char_view::CharView>>,
     icons: ResMut<'w, super::gear_ui::IconCache>,
     data: Option<Res<'w, crate::models::ModelData>>,
     wa: Option<ResMut<'w, benilla_assets::WorldAssets>>,
     images: ResMut<'w, Assets<Image>>,
+    seen_tables: Local<'s, bool>,
 }
 
 /// The class grid: each class's square in the character-creation icons, and whether it plays.

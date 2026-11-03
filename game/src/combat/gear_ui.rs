@@ -389,6 +389,8 @@ impl IconCache {
             return h.clone();
         }
         let (data, wa) = (data?, wa?);
+        // The item tables may still be loading: nothing is remembered until they are in.
+        data.tables.as_ref()?.items.as_ref()?;
         let handle = models::item_look(data, gear_slot(it.slot), it.look)
             .and_then(|(_, icon)| icon)
             .and_then(|path| wa.sprite_texture(&path, images));
@@ -771,14 +773,6 @@ fn spawn_inventory(
                 BorderColor::all(gold.with_alpha(0.7)),
                 Fallback(PAPERDOLL[0]),
             ));
-            // The figure, behind the frame.
-            let mut fig = w.spawn((
-                cw_at(66.0, 76.0, 232.0, 215.0),
-                BackgroundColor(Color::srgb(0.04, 0.035, 0.03)),
-            ));
-            if let Some(img) = figure {
-                fig.insert(ImageNode::new(img));
-            }
             for (i, (x, y, pw)) in [
                 (0.0, 0.0, 256.0),
                 (256.0, 0.0, 128.0),
@@ -792,6 +786,14 @@ fn spawn_inventory(
                     cw_at(x + 2.0, y - 1.0, pw, 256.0),
                     WowSkin::new(PAPERDOLL[i], [0.0, 0.0, 1.0, 1.0]),
                 ));
+            }
+            // The figure, over the frame's middle (as the client draws its model).
+            let mut fig = w.spawn((
+                cw_at(66.0, 76.0, 232.0, 215.0),
+                BackgroundColor(Color::srgb(0.04, 0.035, 0.03)),
+            ));
+            if let Some(img) = figure {
+                fig.insert(ImageNode::new(img));
             }
             w.spawn((
                 Node {
