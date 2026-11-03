@@ -46,7 +46,10 @@ pub struct Placeholders {
     pub bolt: Handle<Mesh>,
     /// A flat disc of radius 1; scale it to an area's radius.
     pub disc: Handle<Mesh>,
+    /// The XP orb: a crystal (mesh, and a material per value tier) and the soft glow under it.
     pub orb: (Handle<Mesh>, Handle<StandardMaterial>),
+    pub orb_tiers: [Handle<StandardMaterial>; 3],
+    pub orb_glow: (Handle<Mesh>, [Handle<StandardMaterial>; 3]),
     /// An enemy caster's bolt, and the red see-through material of danger zones.
     pub enemy_bolt: (Handle<Mesh>, Handle<StandardMaterial>),
     pub warn: Handle<StandardMaterial>,
@@ -149,7 +152,27 @@ fn build_placeholders(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
+    let gem = |c: [f32; 3], glow: f32| StandardMaterial {
+        base_color: Color::srgb(c[0], c[1], c[2]),
+        emissive: LinearRgba::rgb(c[0] * glow, c[1] * glow, c[2] * glow),
+        perceptual_roughness: 0.2,
+        metallic: 0.1,
+        reflectance: 0.8,
+        ..default()
+    };
+    let tiers = super::xp::ORB_TIER_COLORS.map(|c| materials.add(gem(c, 0.9)));
+    let glow_tex = images.add(super::xp::glow_image());
+    let glows = super::xp::ORB_TIER_COLORS.map(|c| {
+        materials.add(StandardMaterial {
+            base_color: Color::srgba(c[0], c[1], c[2], 0.9),
+            base_color_texture: Some(glow_tex.clone()),
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            ..default()
+        })
+    });
     let mut enemy = HashMap::new();
     for kind in ALL_KINDS {
         let d = kind.def();
@@ -196,15 +219,9 @@ fn build_placeholders(
         ball: meshes.add(Sphere::new(0.35)),
         bolt: meshes.add(Cuboid::new(0.18, 0.18, 0.8)),
         disc: meshes.add(Cylinder::new(1.0, 0.08)),
-        orb: (
-            meshes.add(Sphere::new(0.3)),
-            materials.add(StandardMaterial {
-                base_color: Color::srgb(0.35, 1.0, 0.5),
-                emissive: LinearRgba::rgb(0.6, 3.0, 1.0),
-                unlit: true,
-                ..default()
-            }),
-        ),
+        orb: (meshes.add(super::xp::gem_mesh()), tiers[0].clone()),
+        orb_tiers: tiers,
+        orb_glow: (meshes.add(Plane3d::default().mesh().size(1.0, 1.0)), glows),
         enemy_bolt: (
             meshes.add(Sphere::new(0.3)),
             materials.add(unlit(Color::srgb(0.75, 0.4, 1.0))),

@@ -13,7 +13,7 @@ impl Plugin for XpPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (collect_orbs, merge_orbs)
+            (collect_orbs, merge_orbs, animate_orbs)
                 .chain()
                 .in_set(CombatSet::Resolve)
                 .run_if(super::hero_on_ground),
@@ -26,9 +26,129 @@ pub struct Orb {
     pub xp: u32,
 }
 
-/// Bigger orbs for bigger XP.
+/// The crystal's colour per value tier: small green, middling blue, big (merged) violet.
+pub const ORB_TIER_COLORS: [[f32; 3]; 3] = [[0.3, 1.0, 0.45], [0.3, 0.65, 1.0], [0.85, 0.4, 1.0]];
+
+/// An orb's value tier.
+pub fn orb_tier(xp: u32) -> usize {
+    match xp {
+        0..=2 => 0,
+        3..=9 => 1,
+        _ => 2,
+    }
+}
+
+/// Bigger crystals for bigger XP, by tier and a little within it.
 pub fn orb_scale(xp: u32) -> f32 {
-    (0.8 + 0.25 * xp as f32).min(2.5)
+    let base = [0.9, 1.25, 1.65][orb_tier(xp)];
+    (base + 0.02 * xp as f32).min(2.2)
+}
+
+/// A crystal: two four-sided pyramids point to point (an octahedron, taller than wide), flat
+/// faced so it catches the light.
+pub fn gem_mesh() -> Mesh {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
+    let (w, h) = (0.28, 0.48);
+    let tip = [Vec3::Y * h, Vec3::NEG_Y * h];
+    let ring = [
+        Vec3::new(w, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, w),
+        Vec3::new(-w, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, -w),
+    ];
+    let mut pos = Vec::new();
+    let mut nor = Vec::new();
+    for (t, up) in [(tip[0], true), (tip[1], false)] {
+        for i in 0..4 {
+            let (a, b) = (ring[i], ring[(i + 1) % 4]);
+            let (a, b) = if up { (b, a) } else { (a, b) };
+            let n = (a - t).cross(b - t).normalize();
+            for p in [t, a, b] {
+                pos.push(p.to_array());
+                nor.push(n.to_array());
+            }
+        }
+    }
+    let n = pos.len() as u32;
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, nor)
+    .with_inserted_indices(Indices::U32((0..n).collect()))
+}
+
+/// A soft round glow (white, fading out), tinted per tier for the light under an orb.
+pub fn glow_image() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const N: u32 = 64;
+    let mut data = Vec::with_capacity((N * N * 4) as usize);
+    for y in 0..N {
+        for x in 0..N {
+            let dx = (x as f32 + 0.5) / N as f32 * 2.0 - 1.0;
+            let dy = (y as f32 + 0.5) / N as f32 * 2.0 - 1.0;
+            let t = (1.0 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0);
+            let a = (t * t * 255.0) as u8;
+            data.extend_from_slice(&[255, 255, 255, a]);
+        }
+    }
+    Image::new(
+        Extent3d {
+            width: N,
+            height: N,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+}
+
+/// An orb's crystal and its glow, which turn and bob.
+#[derive(Component)]
+pub struct OrbGem {
+    phase: f32,
+}
+#[derive(Component)]
+pub struct OrbGlow;
+
+/// The crystals spin and float; a merged orb's crystal takes its new tier's colour.
+#[allow(clippy::type_complexity)]
+fn animate_orbs(
+    time: Res<Time<Real>>,
+    assets: Res<Placeholders>,
+    orbs: Query<(Ref<Orb>, &Children)>,
+    mut gems: Query<
+        (
+            &OrbGem,
+            &mut Transform,
+            &mut MeshMaterial3d<StandardMaterial>,
+        ),
+        Without<OrbGlow>,
+    >,
+    mut glows: Query<&mut MeshMaterial3d<StandardMaterial>, (With<OrbGlow>, Without<OrbGem>)>,
+) {
+    let t = time.elapsed_secs();
+    for (orb, children) in &orbs {
+        let tier = orb_tier(orb.xp);
+        for c in children.iter() {
+            if let Ok((g, mut xf, mut mat)) = gems.get_mut(c) {
+                xf.rotation = Quat::from_rotation_y(t * 1.6 + g.phase);
+                xf.translation.y = 0.25 + 0.12 * (t * 2.4 + g.phase).sin();
+                if orb.is_changed() {
+                    mat.0 = assets.orb_tiers[tier].clone();
+                }
+            } else if orb.is_changed() {
+                if let Ok(mut mat) = glows.get_mut(c) {
+                    mat.0 = assets.orb_glow.1[tier].clone();
+                }
+            }
+        }
+    }
 }
 
 /// The most orbs on the map: past it the farthest from the hero merge into the nearest kept
@@ -110,12 +230,21 @@ pub fn spawn_orb(commands: &mut Commands, assets: &Placeholders, at: Vec3, xp: u
             Visibility::default(),
         ))
         .with_children(|c| {
-            // A glowing green sphere that always shows; the client's missile model (`fx`) only
-            // adds its sparkle around it (on its own it can be too faint to see).
+            // A turning crystal in its tier's colour, and a soft light on the ground under it.
+            let tier = orb_tier(xp);
             c.spawn((
                 Mesh3d(assets.orb.0.clone()),
-                MeshMaterial3d(assets.orb.1.clone()),
+                MeshMaterial3d(assets.orb_tiers[tier].clone()),
                 Transform::default(),
+                OrbGem {
+                    phase: (at.x * 3.1 + at.z * 1.7).rem_euclid(std::f32::consts::TAU),
+                },
+            ));
+            c.spawn((
+                Mesh3d(assets.orb_glow.0.clone()),
+                MeshMaterial3d(assets.orb_glow.1[tier].clone()),
+                Transform::from_xyz(0.0, -0.33, 0.0).with_scale(Vec3::splat(1.9)),
+                OrbGlow,
             ));
         });
 }
@@ -177,6 +306,8 @@ mod merge_tests {
         // Both far ones go into the kept orb at x = 2, the nearer of the two kept to them.
         assert!(plan.iter().all(|(_, into)| *into == 2));
         assert!(orb_scale(1000) <= 2.5);
+        assert_eq!((orb_tier(1), orb_tier(5), orb_tier(40)), (0, 1, 2));
+        assert!(orb_scale(40) > orb_scale(1));
     }
 }
 
@@ -196,5 +327,6 @@ mod system_params {
         let mut world = World::new();
         init(&mut world, collect_orbs);
         init(&mut world, merge_orbs);
+        init(&mut world, animate_orbs);
     }
 }

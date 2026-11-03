@@ -11,7 +11,6 @@ use super::gear_ui::LootBag;
 use super::portal::Chest;
 use super::skills::{Projectile, Zone};
 use super::visuals::{spawn_flash, Placeholders};
-use super::xp::Orb;
 use super::CombatSet;
 use crate::content::SkillId;
 use crate::models::{self, ModelData, ModelRequest};
@@ -27,7 +26,6 @@ impl Plugin for FxPlugin {
                 (
                     dress_projectiles,
                     dress_zones,
-                    dress_orbs,
                     frozen_ice,
                     tick_bursts,
                     (resolve_object_looks, dress_objects).chain(),
@@ -39,7 +37,6 @@ impl Plugin for FxPlugin {
 
 /// How many effect instances may live at once, by kind.
 const MAX_BURSTS: usize = 24;
-const MAX_ORB_MODELS: usize = 90;
 const MAX_ICE: usize = 30;
 /// Seconds a one-shot burst lives (its particles drain after).
 const BURST_LIFE: f32 = 1.4;
@@ -194,37 +191,6 @@ fn dress_zones(mut commands: Commands, art: Res<WowArt>, new: Query<(Entity, &Zo
     }
 }
 
-/// XP orbs wear a small green missile model, up to a cap, nearest the hero first (the orb merge
-/// keeps their count under it; any past it keep the plain sphere until there is room).
-#[allow(clippy::type_complexity)]
-fn dress_orbs(
-    mut commands: Commands,
-    art: Res<WowArt>,
-    heroes: Query<&Transform, With<crate::game::Hero>>,
-    bare: Query<(Entity, &Transform), (With<Orb>, Without<ModelRequest>)>,
-    dressed: Query<(), (With<Orb>, With<ModelRequest>)>,
-) {
-    let Some(path) = art.orb_model.clone() else {
-        return;
-    };
-    let room = MAX_ORB_MODELS.saturating_sub(dressed.iter().count());
-    if room == 0 || bare.is_empty() {
-        return;
-    }
-    let hero = heroes.single().map(|h| h.translation).unwrap_or(Vec3::ZERO);
-    let mut order: Vec<(Entity, f32)> = bare
-        .iter()
-        .map(|(e, xf)| (e, xf.translation.distance_squared(hero)))
-        .collect();
-    order.sort_by(|a, b| a.1.total_cmp(&b.1));
-    for (e, _) in order.into_iter().take(room) {
-        commands.entity(e).insert(ModelRequest::Effect {
-            path: path.clone(),
-            scale: 0.5,
-        });
-    }
-}
-
 /// The client's models for the boss chest and loot sacks, found by their paths once the tables
 /// are in.
 #[derive(Resource, Default)]
@@ -339,7 +305,6 @@ mod tests {
         let mut world = World::new();
         IntoSystem::into_system(dress_projectiles).initialize(&mut world);
         IntoSystem::into_system(dress_zones).initialize(&mut world);
-        IntoSystem::into_system(dress_orbs).initialize(&mut world);
         IntoSystem::into_system(frozen_ice).initialize(&mut world);
         IntoSystem::into_system(tick_bursts).initialize(&mut world);
         IntoSystem::into_system(resolve_object_looks).initialize(&mut world);
