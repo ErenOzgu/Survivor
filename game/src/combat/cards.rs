@@ -48,7 +48,7 @@ struct CardButton(usize);
 /// A card's title and body, in Turkish.
 pub fn card_text(card: Card) -> (String, String) {
     match card {
-        Card::New(id) => (id.def().name.to_string(), id.def().desc.to_string()),
+        Card::New(id) => (id.name().to_string(), id.desc().to_string()),
         Card::Upgrade(id, to) => (
             skill_label(id, to),
             id.def()
@@ -58,7 +58,7 @@ pub fn card_text(card: Card) -> (String, String) {
                 .unwrap_or("")
                 .to_string(),
         ),
-        Card::Evolve(_, into) => (into.def().name.to_string(), into.def().desc.to_string()),
+        Card::Evolve(_, into) => (into.name().to_string(), into.desc().to_string()),
         Card::NewPassive(p) | Card::UpgradePassive(p, _) => {
             (p.def().name.to_string(), p.def().line())
         }
@@ -173,13 +173,15 @@ pub fn rarity(card: Card) -> (&'static str, Color) {
 }
 
 /// The line under the name: what kind of thing it is.
-pub fn card_kind(card: Card) -> &'static str {
+pub fn card_kind(card: Card) -> String {
+    // The class's own schools.
+    let schools = crate::content::classes::current().def().schools;
     match School::of(card) {
-        School::Frost => "Buz büyüsü",
-        School::Fire => "Ateş büyüsü",
-        School::Arcane => "Arkan büyüsü",
-        School::Passive => "Pasif",
-        School::Potion => "İksir",
+        School::Frost => format!("{} büyüsü", schools[0]),
+        School::Fire => format!("{} büyüsü", schools[1]),
+        School::Arcane => format!("{} büyüsü", schools[2]),
+        School::Passive => "Pasif".to_string(),
+        School::Potion => "İksir".to_string(),
     }
 }
 
@@ -187,8 +189,8 @@ pub fn card_kind(card: Card) -> &'static str {
 pub fn card_footer(card: Card) -> String {
     match card {
         Card::New(_) => "Yeni skill: boş bir yuvaya girer".to_string(),
-        Card::Upgrade(id, _) => format!("{} skillini güçlendirir", id.def().name),
-        Card::Evolve(from, _) => format!("{} buna dönüşür", from.def().name),
+        Card::Upgrade(id, _) => format!("{} skillini güçlendirir", id.name()),
+        Card::Evolve(from, _) => format!("{} buna dönüşür", from.name()),
         Card::NewPassive(_) => "Yeni pasif".to_string(),
         Card::UpgradePassive(p, _) => format!("{} pasifini güçlendirir", p.def().name),
         Card::Heal => "Hemen içilir".to_string(),
@@ -389,7 +391,7 @@ fn spawn_card(
     let art = look.art;
     let (title, body) = card_text(card);
     let title = match card {
-        Card::Upgrade(id, _) => id.def().name.to_string(),
+        Card::Upgrade(id, _) => id.name().to_string(),
         _ => title,
     };
     let school = School::of(card);
@@ -694,7 +696,7 @@ mod tests {
         assert!(!card_text(Card::Heal).1.is_empty());
         for (b, _, into) in crate::content::skills::EVOLUTIONS {
             let c = Card::Evolve(b, into);
-            assert_eq!(card_text(c).0, into.def().name);
+            assert_eq!(card_text(c).0, into.name());
             assert!(card_tag(c).contains("EVRİM") && card_pips(c).is_none());
         }
         for p in crate::content::passives::PassiveId::ALL {

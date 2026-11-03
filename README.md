@@ -100,6 +100,13 @@ oynanabilir bir savaş döngüsü kurar:
   eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
   (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
   Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Sınıflar:** Büyücü, Kara Büyücü (Warlock) ve Rahip (Priest), ana menünün sınıf ızgarasından
+  seçilir. Hepsi aynı skill rollerini oynar (yavaşlatan ok, patlayan ok, yaylım, donduran nova,
+  iki yer alanı, çevre patlaması, kaçış, üç evrim), sayılar dengede kalır; ama her sınıf kendi WoW
+  büyüleriyle: Kara Büyücü Shadow Bolt, Soul Fire, Searing Pain, Howl of Terror, Rain of Fire,
+  Immolate, Hellfire; Rahip Smite, Holy Fire, Mind Flay, Psychic Scream, Shadow Word: Pain,
+  Starshards, Holy Nova, Fade. Adlar, ikonlar, efektler ve okul adları sınıfa göre değişir.
+  Savaşçı, Paladin gibi yakın dövüşçüler ileride (ayrı bir sistem ister).
 - **Bölgeler:** Elwynn Ormanı, Westfall, Redridge Dağları, Duskwood. Ana menüdeki bölge
   listesinden seçilir; biri bitirilince (portal) sonraki açılır. Her bölgenin kendi başlangıç yeri,
   istemcideki o bölgenin yaratık modelleri (Westfall: murloc, çakal, akbaba, hasat golemi;

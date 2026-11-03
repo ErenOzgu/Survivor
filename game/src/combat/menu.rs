@@ -189,21 +189,38 @@ pub(super) struct MenuLook<'w, 's> {
     seen_tables: Local<'s, bool>,
 }
 
-/// The class grid: each class's square in the character-creation icons, and whether it plays.
-const CLASSES: [(&str, [f32; 4], bool); 9] = [
-    ("Savaşçı", [0.0, 0.0, 0.25, 0.25], false),
-    ("Büyücü", [0.25, 0.0, 0.49609375, 0.25], true),
-    ("Haydut", [0.49609375, 0.0, 0.7421875, 0.25], false),
-    ("Druid", [0.7421875, 0.0, 0.98828125, 0.25], false),
-    ("Avcı", [0.0, 0.25, 0.25, 0.5], false),
-    ("Şaman", [0.25, 0.25, 0.49609375, 0.5], false),
-    ("Rahip", [0.49609375, 0.25, 0.7421875, 0.5], false),
-    ("Kara Büyücü", [0.7421875, 0.25, 0.98828125, 0.5], false),
-    ("Paladin", [0.0, 0.5, 0.25, 0.75], false),
+use crate::content::classes::ClassId;
+
+/// The class grid: each class's square in the character-creation icons, and the class it
+/// plays as (the others are for later).
+const CLASSES: [(&str, [f32; 4], Option<ClassId>); 9] = [
+    ("Savaşçı", [0.0, 0.0, 0.25, 0.25], None),
+    ("Büyücü", [0.25, 0.0, 0.49609375, 0.25], Some(ClassId::Mage)),
+    ("Haydut", [0.49609375, 0.0, 0.7421875, 0.25], None),
+    ("Druid", [0.7421875, 0.0, 0.98828125, 0.25], None),
+    ("Avcı", [0.0, 0.25, 0.25, 0.5], None),
+    ("Şaman", [0.25, 0.25, 0.49609375, 0.5], None),
+    (
+        "Rahip",
+        [0.49609375, 0.25, 0.7421875, 0.5],
+        Some(ClassId::Priest),
+    ),
+    (
+        "Kara Büyücü",
+        [0.7421875, 0.25, 0.98828125, 0.5],
+        Some(ClassId::Warlock),
+    ),
+    ("Paladin", [0.0, 0.5, 0.25, 0.75], None),
 ];
 
-/// The mage's class colour.
-const MAGE_BLUE: Color = Color::srgb(0.41, 0.8, 0.94);
+/// A class in the grid, clicked to play it.
+#[derive(Component, Clone, Copy)]
+struct ClassChoice(ClassId);
+
+fn class_color(c: ClassId) -> Color {
+    let k = c.def().color;
+    Color::srgb(k[0], k[1], k[2])
+}
 
 fn panel_node(width: f32) -> Node {
     Node {
@@ -375,7 +392,9 @@ fn spawn_menu(
                         ..default()
                     })
                     .with_children(|g| {
-                        for (name, uv, plays) in CLASSES {
+                        for (name, uv, class) in CLASSES {
+                            let plays = class.is_some();
+                            let picked = class == Some(save.class);
                             g.spawn(Node {
                                 flex_direction: FlexDirection::Column,
                                 align_items: AlignItems::Center,
@@ -383,27 +402,34 @@ fn spawn_menu(
                                 ..default()
                             })
                             .with_children(|cell| {
-                                cell.spawn((
+                                let mut icon = cell.spawn((
                                     Node {
                                         width: Val::Px(54.0),
                                         height: Val::Px(54.0),
-                                        border: UiRect::all(Val::Px(2.0)),
+                                        border: UiRect::all(Val::Px(if picked { 3.0 } else { 1.0 })),
                                         border_radius: BorderRadius::all(Val::Px(5.0)),
                                         ..default()
                                     },
-                                    BorderColor::all(if plays {
-                                        MAGE_BLUE
-                                    } else {
-                                        Color::srgba(0.4, 0.4, 0.4, 0.5)
+                                    BorderColor::all(match class {
+                                        Some(c) if picked => class_color(c),
+                                        Some(_) => Color::srgba(0.75, 0.6, 0.3, 0.7),
+                                        None => Color::srgba(0.4, 0.4, 0.4, 0.5),
                                     }),
                                     BackgroundColor(Color::srgba(0.2, 0.2, 0.25, 0.8)),
                                     WowSkin::new(CLASS_ICONS, uv),
                                     MenuDim(!plays),
                                 ));
+                                if let Some(c) = class {
+                                    icon.insert((ClassChoice(c), Button));
+                                }
                                 cell.spawn((
                                     Text::new(name),
                                     font.text(13.0),
-                                    TextColor(if plays { MAGE_BLUE } else { dim.with_alpha(0.6) }),
+                                    TextColor(match class {
+                                        Some(c) if picked => class_color(c),
+                                        Some(_) => Color::srgb(0.9, 0.85, 0.7),
+                                        None => dim.with_alpha(0.6),
+                                    }),
                                 ));
                             });
                         }
@@ -414,15 +440,15 @@ fn spawn_menu(
                             margin: UiRect::top(Val::Px(6.0)),
                             ..default()
                         },
-                        Text::new("Büyücü"),
+                        Text::new(save.class.def().name),
                         title(28.0),
-                        TextColor(MAGE_BLUE),
+                        TextColor(class_color(save.class)),
                     ));
                     c.spawn((
-                        Text::new(
-                            "Buzla yavaşlatır, ateşle yakar, arkanla her yeri vurur. Büyüleri \
-                             kendiliğinden atılır; sen kaç, topla, seç.",
-                        ),
+                        Text::new(format!(
+                            "{} Büyüleri kendiliğinden atılır; sen kaç, topla, seç.",
+                            save.class.def().blurb
+                        )),
                         font.text(15.0),
                         TextColor(Color::srgb(0.9, 0.88, 0.84)),
                     ));
@@ -435,7 +461,7 @@ fn spawn_menu(
                         let stats = super::rules::Stats::from_parts(&Default::default(), &save.bonus());
                         for (k, v) in [
                             ("CAN", format!("{:.0}", stats.max_health)),
-                            ("İLK BÜYÜ", "Frostbolt".to_string()),
+                            ("İLK BÜYÜ", crate::content::SkillId::Frostbolt.name().to_string()),
                             (
                                 "BÖLGE",
                                 format!(
@@ -522,8 +548,16 @@ fn spawn_menu(
                             ..default()
                         })
                         .with_children(|n| {
-                            n.spawn((Text::new("Büyücü"), title(30.0), TextColor(Color::WHITE)));
-                            n.spawn((Text::new("Elwynn'in koruyucusu"), font.text(15.0), TextColor(MAGE_BLUE)));
+                            n.spawn((
+                                Text::new(save.class.def().name),
+                                title(30.0),
+                                TextColor(Color::WHITE),
+                            ));
+                            n.spawn((
+                                Text::new(format!("{} yolcusu", save.zone.def().name)),
+                                font.text(15.0),
+                                TextColor(class_color(save.class)),
+                            ));
                             n.spawn((
                                 Text::new(record_lines(save).join("\n")),
                                 font.text(14.0),
@@ -784,6 +818,7 @@ fn sync_zone(
     mut save: ResMut<Save>,
     mut start: ResMut<crate::game::Start>,
     choices: Query<(&Interaction, &ZoneChoice), Changed<Interaction>>,
+    classes: Query<(&Interaction, &ClassChoice), Changed<Interaction>>,
     mut heroes: Query<&mut Transform, With<crate::game::Hero>>,
 ) {
     use crate::content::zones;
@@ -793,6 +828,18 @@ fn sync_zone(
             save.write();
             menu.refresh = true;
         }
+    }
+    for (i, c) in &classes {
+        if *i == Interaction::Pressed {
+            save.data.class = c.0;
+            save.write();
+            menu.refresh = true;
+        }
+    }
+    // The class plays from the menu on (its skills' looks are looked up again).
+    if menu.is_open() && crate::content::classes::current() != save.data.class {
+        crate::content::classes::set_current(save.data.class);
+        menu.refresh = true;
     }
     // `RNS_START` keeps its own spot; otherwise the zone's.
     let want = save.data.zone;

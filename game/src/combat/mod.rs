@@ -302,7 +302,7 @@ fn tick_run_clock(time: Res<Time>, mut run: ResMut<Run>) {
 
 /// The Turkish label for a skill at a level, as the HUD and cards show it.
 pub fn skill_label(id: SkillId, level: u8) -> String {
-    format!("{} {}", id.def().name, roman(level))
+    format!("{} {}", id.name(), roman(level))
 }
 
 fn roman(n: u8) -> &'static str {

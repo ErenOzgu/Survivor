@@ -745,7 +745,7 @@ fn spawn_inventory(
     icon: &mut dyn FnMut(&Item) -> Option<Handle<Image>>,
 ) -> Entity {
     use super::art::{CLASS_ICONS, CLOSE_BUTTON, PAPERDOLL, SLOT_PICTURES};
-    use super::hud::{Fallback, WowSkin, MAGE_ICON};
+    use super::hud::{Fallback, WowSkin};
     let gold = Color::srgb(1.0, 0.82, 0.0);
     let dim = Color::srgb(0.75, 0.75, 0.75);
     let shadow = TextShadow {
@@ -813,7 +813,10 @@ fn spawn_inventory(
                     ..cw_at(7.0, 6.0, 60.0, 60.0)
                 },
                 BackgroundColor(Color::srgb(0.25, 0.3, 0.6)),
-                WowSkin::new(CLASS_ICONS, MAGE_ICON),
+                WowSkin::new(
+                    CLASS_ICONS,
+                    crate::content::classes::current().def().icon_uv,
+                ),
             ));
             w.spawn((
                 InvClose,
@@ -832,7 +835,7 @@ fn spawn_inventory(
             })
             .with_children(|n| {
                 n.spawn((
-                    Text::new("Büyücü"),
+                    Text::new(crate::content::classes::current().def().name),
                     font.text(14.0 * CW_SCALE),
                     TextColor(Color::WHITE),
                     shadow,
@@ -845,8 +848,9 @@ fn spawn_inventory(
             .with_children(|n| {
                 n.spawn((
                     Text::new(format!(
-                        "Seviye {} Büyücü   ·   Çanta {}/{BAG_SIZE}",
+                        "Seviye {} {}   ·   Çanta {}/{BAG_SIZE}",
                         run.level,
+                        crate::content::classes::current().def().name,
                         d.bag.len()
                     )),
                     font.text(11.0 * CW_SCALE),

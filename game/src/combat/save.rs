@@ -10,6 +10,7 @@ use super::hero::{check_death, reset_run};
 use super::portal::MapCleared;
 use super::rules::Bonus;
 use super::{CombatSet, HeroDied, RestartRun, Run};
+use crate::content::classes::ClassId;
 use crate::content::crafting::{Food, Mat};
 use crate::content::items::{Item, ItemSlot};
 use crate::content::talents::{points_for_xp, Talents};
@@ -91,6 +92,8 @@ pub struct SaveData {
     /// The zone picked for the runs, and the zones cleared (each opens the next).
     pub zone: ZoneId,
     pub cleared_zones: Vec<ZoneId>,
+    /// The class played.
+    pub class: ClassId,
 }
 
 /// How a run ended.
@@ -155,6 +158,7 @@ impl SaveData {
             s.push_str(&format!("food_pick={}\n", f.key()));
         }
         s.push_str(&format!("zone={}\n", self.zone.key()));
+        s.push_str(&format!("class={}\n", self.class.key()));
         if !self.cleared_zones.is_empty() {
             let keys: Vec<&str> = self.cleared_zones.iter().map(|z| z.key()).collect();
             s.push_str(&format!("cleared_zones={}\n", keys.join(",")));
@@ -284,6 +288,7 @@ impl SaveData {
                 }
                 "food_pick" => d.food_pick = Food::from_key(v),
                 "zone" => d.zone = ZoneId::from_key(v).unwrap_or_default(),
+                "class" => d.class = ClassId::from_key(v).unwrap_or_default(),
                 "cleared_zones" => {
                     d.cleared_zones = v.split(',').filter_map(ZoneId::from_key).collect();
                 }

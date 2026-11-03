@@ -352,7 +352,7 @@ fn spawn_projectile(
     let life = if homing { 3.0 } else { s.range / s.speed * 1.4 };
     commands
         .spawn((
-            Name::new(id.def().name),
+            Name::new(id.name()),
             Projectile {
                 skill: id,
                 dir,
@@ -413,7 +413,7 @@ fn spawn_zone_with(
     let r = zone.radius;
     commands
         .spawn((
-            Name::new(id.def().name),
+            Name::new(id.name()),
             zone,
             Transform::from_translation(at + Vec3::Y * 0.15),
             Visibility::default(),

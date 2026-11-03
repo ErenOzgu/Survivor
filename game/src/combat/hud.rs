@@ -29,6 +29,7 @@ impl Plugin for HudPlugin {
                     update_ability_slots,
                     skin_bars,
                     apply_skins,
+                    class_frame,
                 )
                     .in_set(CombatSet::Ui),
             );
@@ -96,6 +97,11 @@ fn ui_on_follow_camera(mut commands: Commands, cams: Query<Entity, Added<FollowC
 
 #[derive(Component)]
 struct HpFill;
+/// The player frame's class name and portrait, which follow the class played.
+#[derive(Component)]
+struct ClassNameText;
+#[derive(Component)]
+struct ClassPortrait;
 #[derive(Component)]
 struct HpText;
 #[derive(Component)]
@@ -259,6 +265,7 @@ fn spawn_hud(mut commands: Commands, font: Res<UiFont>) {
                 },
                 BackgroundColor(Color::srgb(0.25, 0.3, 0.6)),
                 WowSkin::new(CLASS_ICONS, MAGE_ICON),
+                ClassPortrait,
             ));
             bar_in(
                 p,
@@ -279,6 +286,7 @@ fn spawn_hud(mut commands: Commands, font: Res<UiFont>) {
             p.spawn(at(106.0, 22.0, 119.0, 17.0)).with_children(|n| {
                 n.spawn((
                     Text::new("Büyücü"),
+                    ClassNameText,
                     font.text(12.0 * FRAME_SCALE),
                     TextColor(GOLD),
                     shadow,
@@ -513,7 +521,7 @@ fn update_skill_bar(
                     }
                     None => {
                         slot.spawn((
-                            Text::new(id.def().name.chars().next().unwrap_or('?').to_string()),
+                            Text::new(id.name().chars().next().unwrap_or('?').to_string()),
                             font.text(24.0),
                             TextColor(Color::WHITE),
                         ));
@@ -747,6 +755,29 @@ fn skin_bars(
     }
 }
 
+/// The player frame shows the class played: its name and its icon.
+fn class_frame(
+    images: Res<Assets<Image>>,
+    mut names: Query<&mut Text, With<ClassNameText>>,
+    mut portraits: Query<&mut ImageNode, With<ClassPortrait>>,
+    mut shown: Local<Option<(crate::content::classes::ClassId, bool)>>,
+) {
+    let class = crate::content::classes::current();
+    let has_image = !portraits.is_empty();
+    if *shown == Some((class, has_image)) {
+        return;
+    }
+    *shown = Some((class, has_image));
+    for mut t in &mut names {
+        t.0 = class.def().name.to_string();
+    }
+    for mut img in &mut portraits {
+        if let Some(size) = images.get(&img.image).map(|i| i.size_f32()) {
+            img.rect = Some(uv_rect(size, class.def().icon_uv));
+        }
+    }
+}
+
 /// The client pixels of a texture part.
 pub fn uv_rect(size: Vec2, uv: [f32; 4]) -> Rect {
     Rect::new(
@@ -889,6 +920,7 @@ mod system_params {
         init(&mut world, update_skill_bar);
         init(&mut world, skin_bars);
         init(&mut world, apply_skins);
+        init(&mut world, class_frame);
         init(&mut world, update_cooldowns);
         init(&mut world, update_ability_bar);
         init(&mut world, update_ability_slots);

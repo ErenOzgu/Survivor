@@ -22,7 +22,8 @@ pub struct ArtPlugin;
 impl Plugin for ArtPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WowArt>()
-            .add_systems(Startup, load_art.after(benilla_assets::AssetSet::Open));
+            .add_systems(Startup, load_art.after(benilla_assets::AssetSet::Open))
+            .add_systems(Update, reresolve_class);
     }
 }
 
@@ -269,6 +270,10 @@ pub fn visual_fx(
 /// Where each skill borrows its effects from besides its own spell (Arcane Missiles' missile is
 /// the triggered "Arcane Missile"; an evolution takes its parent's).
 pub fn fx_sources(id: SkillId) -> &'static [&'static str] {
+    // The borrowed missiles are the Mage's; another class's spells carry their own.
+    if crate::content::classes::current() != crate::content::classes::ClassId::Mage {
+        return &[];
+    }
     match id {
         SkillId::ArcaneMissiles | SkillId::ArcaneStorm => &["Arcane Missile", "Arcane Missiles"],
         SkillId::WinterBolts => &["Frostbolt", "Frost Nova"],
@@ -280,7 +285,8 @@ pub fn fx_sources(id: SkillId) -> &'static [&'static str] {
 /// wears Flamestrike's fire).
 pub fn area_fallback(id: SkillId) -> Option<&'static str> {
     match id {
-        SkillId::Pyroblast => Some("Flamestrike"),
+        // The class's own burning ground (the Mage's Flamestrike).
+        SkillId::Pyroblast => Some(SkillId::Flamestrike.icon_spell()),
         _ => None,
     }
 }
@@ -397,34 +403,6 @@ fn load_art(
             return;
         }
     };
-    for id in SkillId::every() {
-        let name = id.def().icon_spell;
-        let rows = catalog
-            .iter()
-            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
-        let Some(spell_id) = pick_spell(rows, name) else {
-            warn!("rnsurvivors: no spell named {name:?} in Spell.dbc");
-            continue;
-        };
-        let d = catalog.get(spell_id).expect("picked from the catalog");
-        let icon = d
-            .icon
-            .as_deref()
-            .and_then(|p| wa.sprite_texture(p, &mut images));
-        info!(
-            "rnsurvivors: {name} = spell {spell_id}, visual {}, icon {:?}",
-            d.visual, d.icon
-        );
-        art.skills.insert(
-            id,
-            SkillSpell {
-                spell_id,
-                visual: d.visual,
-                icon_path: d.icon.clone(),
-                icon,
-            },
-        );
-    }
     for p in PassiveId::ALL {
         let name = p.def().icon_spell;
         let rows = catalog
@@ -464,16 +442,6 @@ fn load_art(
                 .map(|st| visual_fx(st, &path, &kit, &kit_sound))
                 .unwrap_or_default()
         };
-        let mut fx = HashMap::new();
-        for id in SkillId::every() {
-            let own = fx_of(id.def().icon_spell);
-            let borrowed: Vec<SkillFx> = fx_sources(id).iter().map(|n| fx_of(n)).collect();
-            let mut merged = merge_fx(borrowed.into_iter().chain(std::iter::once(own)));
-            if merged.area.is_none() {
-                merged.area = area_fallback(id).and_then(|n| fx_of(n).area);
-            }
-            fx.insert(id, merged);
-        }
         let mut abilities = HashMap::new();
         for a in AbilityId::ALL {
             let name = a.def().name;
@@ -490,10 +458,10 @@ fn load_art(
             abilities.insert(a, (icon, fx_of(name)));
         }
         let orb = fx_of("Wrath").missile;
-        art.fx = fx;
         art.orb_model = orb;
         art.abilities = abilities;
     }
+    resolve_skills(&mut art, &catalog, &mut wa, &mut images);
     if dump_wanted() {
         if let Some(v) = &art.visuals {
             write_spell_dump(&catalog, v);
@@ -501,6 +469,91 @@ fn load_art(
     }
     art.spells = Some(catalog);
     write_report(&art);
+}
+
+/// The skills' spells for the class being played: each one's icon and effect models (borrowed
+/// missiles first, then its own visual). Run at start and again when the class changes.
+pub fn resolve_skills(
+    art: &mut WowArt,
+    catalog: &SpellCatalog,
+    wa: &mut WorldAssets,
+    images: &mut Assets<Image>,
+) {
+    art.skills.clear();
+    for id in SkillId::every() {
+        let name = id.icon_spell();
+        let rows = catalog
+            .iter()
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+        let Some(spell_id) = pick_spell(rows, name) else {
+            warn!("rnsurvivors: no spell named {name:?} in Spell.dbc");
+            continue;
+        };
+        let d = catalog.get(spell_id).expect("picked from the catalog");
+        let icon = d.icon.as_deref().and_then(|p| wa.sprite_texture(p, images));
+        info!(
+            "rnsurvivors: {name} = spell {spell_id}, visual {}, icon {:?}",
+            d.visual, d.icon
+        );
+        art.skills.insert(
+            id,
+            SkillSpell {
+                spell_id,
+                visual: d.visual,
+                icon_path: d.icon.clone(),
+                icon,
+            },
+        );
+    }
+    let Some(v) = &art.visuals else {
+        return;
+    };
+    let path = |id: u32| v.effect_path(id).map(str::to_string);
+    let kit = |k: u32| v.kit(k).map(|k| k.effects().collect()).unwrap_or_default();
+    let kit_sound = |k: u32| v.kit(k).and_then(|k| k.sound);
+    let fx_of = |spell_name: &str| -> SkillFx {
+        let rows = catalog
+            .iter()
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+        pick_spell(rows, spell_name)
+            .and_then(|sid| catalog.get(sid))
+            .and_then(|d| v.stages(d.visual))
+            .map(|st| visual_fx(st, &path, &kit, &kit_sound))
+            .unwrap_or_default()
+    };
+    let mut fx = HashMap::new();
+    for id in SkillId::every() {
+        let own = fx_of(id.icon_spell());
+        let borrowed: Vec<SkillFx> = fx_sources(id).iter().map(|n| fx_of(n)).collect();
+        let mut merged = merge_fx(borrowed.into_iter().chain(std::iter::once(own)));
+        if merged.area.is_none() {
+            merged.area = area_fallback(id).and_then(|n| fx_of(n).area);
+        }
+        fx.insert(id, merged);
+    }
+    art.fx = fx;
+}
+
+/// When the class changes, its skills' icons and effects are looked up again.
+fn reresolve_class(
+    mut art: ResMut<WowArt>,
+    wa: Option<ResMut<WorldAssets>>,
+    mut images: ResMut<Assets<Image>>,
+    mut last: Local<Option<crate::content::classes::ClassId>>,
+) {
+    let now = crate::content::classes::current();
+    // The start-up lookup was for the default class.
+    let was = *last.get_or_insert(crate::content::classes::ClassId::Mage);
+    if was == now {
+        return;
+    }
+    let (Some(mut wa), Some(catalog)) = (wa, art.spells.take()) else {
+        return;
+    };
+    *last = Some(now);
+    resolve_skills(&mut art, &catalog, &mut wa, &mut images);
+    art.spells = Some(catalog);
+    info!("rnsurvivors: skills looked up again for {now:?}");
 }
 
 /// The report file: what was read from the client, for sharing without the console.
@@ -688,7 +741,7 @@ fn write_report(art: &WowArt) {
         let _ = writeln!(
             out,
             "[{}] füze {:?} · isabet {:?} · alan {:?} · durum {:?}",
-            id.def().name,
+            id.name(),
             fx.missile,
             fx.impact,
             fx.area,

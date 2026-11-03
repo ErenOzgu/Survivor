@@ -5,6 +5,7 @@
 
 pub mod abilities;
 pub mod bosses;
+pub mod classes;
 pub mod crafting;
 pub mod enemies;
 pub mod items;
