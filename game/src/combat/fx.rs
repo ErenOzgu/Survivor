@@ -198,6 +198,7 @@ pub struct ObjectLooks {
     resolved: bool,
     chest: Option<String>,
     sack: Option<String>,
+    portal: Option<String>,
 }
 
 fn resolve_object_looks(mut looks: ResMut<ObjectLooks>, data: Option<Res<ModelData>>) {
@@ -210,9 +211,15 @@ fn resolve_object_looks(mut looks: ResMut<ObjectLooks>, data: Option<Res<ModelDa
     looks.resolved = true;
     looks.chest = models::object_model(&data, &["chest"], &["mail", "ghost"]);
     looks.sack = models::object_model(&data, &["sack", "lootbag", "bag0"], &["sandbag"]);
+    // A mage's portal: the client's standing portal object.
+    looks.portal = models::object_model(
+        &data,
+        &["mageportal", "portal"],
+        &["portalback", "shadow", "rune", "door"],
+    );
     info!(
-        "rnsurvivors: chest model {:?}, loot sack model {:?}",
-        looks.chest, looks.sack
+        "rnsurvivors: chest model {:?}, loot sack model {:?}, portal model {:?}",
+        looks.chest, looks.sack, looks.portal
     );
 }
 
@@ -222,7 +229,19 @@ fn dress_objects(
     looks: Res<ObjectLooks>,
     chests: Query<Entity, Added<Chest>>,
     bags: Query<Entity, Added<LootBag>>,
+    portals: Query<Entity, Added<super::portal::Portal>>,
 ) {
+    if let Some(path) = &looks.portal {
+        for e in &portals {
+            commands.entity(e).insert((
+                ModelRequest::Effect {
+                    path: path.clone(),
+                    scale: 1.0,
+                },
+                super::portal::PortalDressed,
+            ));
+        }
+    }
     if let Some(path) = &looks.chest {
         for e in &chests {
             commands.entity(e).insert(ModelRequest::Effect {

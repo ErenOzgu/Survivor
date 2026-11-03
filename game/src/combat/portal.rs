@@ -91,15 +91,18 @@ pub fn spawn_chest_and_portal(
             Visibility::default(),
         ))
         .with_children(|p| {
+            // The spinning ring until the client's portal model is in.
             p.spawn((
                 Mesh3d(assets.portal.0.clone()),
                 MeshMaterial3d(assets.portal.1.clone()),
                 Transform::default(),
+                crate::models::ModelPlaceholder,
             ));
             p.spawn((
                 Mesh3d(assets.disc.clone()),
                 MeshMaterial3d(assets.portal_core.clone()),
                 Transform::from_scale(Vec3::new(1.25, 0.2, 1.25)),
+                crate::models::ModelPlaceholder,
             ));
         });
 }
@@ -122,9 +125,21 @@ fn open_chest(
     }
 }
 
-fn spin_portals(time: Res<Time<Real>>, mut portals: Query<(&mut Portal, &mut Transform)>) {
-    for (mut p, mut xf) in &mut portals {
+/// On a portal that wears the client's portal model: it stands on the ground, upright, still.
+#[derive(Component)]
+pub struct PortalDressed;
+
+fn spin_portals(
+    time: Res<Time<Real>>,
+    mut portals: Query<(&mut Portal, &mut Transform, Has<PortalDressed>)>,
+) {
+    for (mut p, mut xf, dressed) in &mut portals {
         p.age += time.delta_secs();
+        if dressed {
+            xf.rotation = Quat::IDENTITY;
+            xf.translation.y = p.base_y - 2.0;
+            continue;
+        }
         xf.rotation =
             Quat::from_rotation_y(p.age * 0.8) * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
         xf.translation.y = p.base_y + 0.25 * (p.age * 2.0).sin();

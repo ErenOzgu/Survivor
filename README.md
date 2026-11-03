@@ -64,7 +64,7 @@ oynanabilir bir savaş döngüsü kurar:
 - **Modeller:** Defias Lideri karakter modelli NPC olarak çizilir (istemcide hazır dokusu
   "VanCleef"/"Defias" olan görünüm). Boss sandığı ve ganimet keseleri istemcinin kendi nesne
   modelleri (`GameObjectDisplayInfo`). Giyilen başlık artık kafada görünür (kask modeli ırka ve
-  cinsiyete göre). Portal şimdilik dönen bir halka.
+  cinsiyete göre). Portal istemcinin kendi büyücü portalı nesnesi (bulunamazsa dönen halka).
 - **Seviye kartları:** koleksiyon kartı düzeninde: oval resmin önünde büyünün ikonu, köşede
   seviye taşı, isim şeridi, nadirlik taşı (beyaz yükseltme, mavi yeni skill, mor yeni pasif,
   turuncu evrim), parşömen üstünde açıklama, altta okul (Buz/Ateş/Arkan/Pasif/İksir). Üstüne
@@ -128,6 +128,7 @@ Ayar dosyasında (`%APPDATA%\Rnsurvivors\ayarlar.txt`):
 | `saat` | `akis` (varsayılan), `gunduz`, `gece`, `18:30` | Günün saati |
 | `kamera` | `yakin`, `orta` (varsayılan), `uzak` | Kamera uzaklığı ve açısı |
 | `kart` | `yukleme` (varsayılan), `agac` | Seviye kartlarının resmi |
+| `dokum` | `1` | Açılışta istemcideki bütün büyüleri (ad, numara, ikon, efekt modelleri) `rnsurvivors-buyuler.txt`'e yazar; efekt seçmek için |
 
 ### Düşmanlar
 

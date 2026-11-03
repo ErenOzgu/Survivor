@@ -491,6 +491,11 @@ fn load_art(
         art.orb_model = orb;
         art.abilities = abilities;
     }
+    if dump_wanted() {
+        if let Some(v) = &art.visuals {
+            write_spell_dump(&catalog, v);
+        }
+    }
     art.spells = Some(catalog);
     write_report(&art);
 }
@@ -553,6 +558,61 @@ pub fn visual_rows(
         });
     }
     (missile, rows)
+}
+
+/// The spell dump's file, written beside the report when asked for.
+pub const DUMP_FILE: &str = "rnsurvivors-buyuler.txt";
+
+/// `dokum=1` in the settings file (or `RNS_DUMP_SPELLS=1`): write every spell of the client
+/// with its icon and effect models, to pick looks from.
+fn dump_wanted() -> bool {
+    std::env::var("RNS_DUMP_SPELLS").as_deref() == Ok("1")
+        || std::fs::read_to_string(crate::settings::settings_path())
+            .ok()
+            .and_then(|t| crate::settings::setting(&t, "dokum"))
+            .is_some_and(|v| v == "1")
+}
+
+/// One spell per name and look (its ranks share them), by name: id, rank, icon, and each
+/// visual stage's models.
+fn write_spell_dump(catalog: &SpellCatalog, visuals: &SpellVisualCatalog) {
+    use std::fmt::Write as _;
+    let mut rows: Vec<(String, u32, Option<String>, Option<String>, u32)> = catalog
+        .iter()
+        .filter(|(_, d)| d.visual != 0)
+        .map(|(id, d)| (d.name.clone(), id, d.rank.clone(), d.icon.clone(), d.visual))
+        .collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    rows.dedup_by(|b, a| a.0 == b.0 && a.4 == b.4);
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "Rnsurvivors büyü dökümü: istemcindeki her büyü (adı, numarası, ikonu, efekt modelleri).\n\
+         Beğendiğin bir efektin adını ya da yolunu yazman yeter.\n"
+    );
+    for (name, id, rank, icon, visual) in &rows {
+        let _ = writeln!(
+            out,
+            "[{name}] spell {id}{} · ikon {} · visual {visual}",
+            rank.as_deref()
+                .map(|r| format!(" ({r})"))
+                .unwrap_or_default(),
+            icon.as_deref().unwrap_or("-"),
+        );
+        let (missile, stages) = visual_rows(visuals, *visual);
+        if let Some(m) = missile {
+            let _ = writeln!(out, "    füze: {m}");
+        }
+        for st in stages {
+            for m in st.models {
+                let _ = writeln!(out, "    {}: {m}", st.stage);
+            }
+        }
+    }
+    match std::fs::write(DUMP_FILE, &out) {
+        Ok(()) => info!("rnsurvivors: {} spells dumped to {DUMP_FILE}", rows.len()),
+        Err(e) => warn!("rnsurvivors: could not write {DUMP_FILE}: {e}"),
+    }
 }
 
 /// A kit slot's attachment, as a readable name.
