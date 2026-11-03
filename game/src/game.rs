@@ -172,6 +172,7 @@ fn move_hero(
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     cams: Query<&FollowCam>,
     hold: Option<Res<crate::combat::CardHold>>,
+    world: benilla_world::collision::WorldCollision,
     mut heroes: Query<(
         &mut Transform,
         &mut Hero,
@@ -267,6 +268,14 @@ fn move_hero(
         (Some(s), Some(a)) => terrain_height_under(s, a, xf.translation),
         _ => None,
     };
+    // No terrain (a dungeon is all building): the floor under the feet, found by a ray.
+    let ground = ground.or_else(|| {
+        crate::content::zones::current()
+            .def()
+            .dungeon
+            .then(|| floor_under(&world, xf.translation - Vec3::Y * hero.air))
+            .flatten()
+    });
     let (y, grounded) = motion::follow_ground(xf.translation.y, ground);
     if grounded && !hero.grounded {
         info!("rnsurvivors: hero on the ground at y={y:.1}");
@@ -274,6 +283,15 @@ fn move_hero(
     // In a jump the feet are that high over the ground.
     xf.translation.y = if grounded { y + hero.air } else { y };
     hero.grounded = grounded;
+}
+
+/// The floor under a point where there is no terrain (inside a dungeon's building): a ray down
+/// from a little above the feet.
+pub fn floor_under(world: &benilla_world::collision::WorldCollision, feet: Vec3) -> Option<f32> {
+    let from = feet + Vec3::Y * 1.5;
+    world
+        .ray_body(from, Dir3::NEG_Y, 12.0)
+        .map(|hit| from.y - hit.distance)
 }
 
 /// The camera follows the hero from behind and above; the wheel zooms, Q/E turn it.

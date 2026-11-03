@@ -651,7 +651,7 @@ fn spawn_menu(
                 .with_children(|c| {
                     heading(c, "Bölge", &title(26.0));
                     use crate::content::zones::{self, ZoneId};
-                    for (i, zone) in ZoneId::ALL.into_iter().enumerate() {
+                    for zone in ZoneId::ALL {
                         let (name, sub) = (zone.def().name, zone.def().sub);
                         let playable = zones::unlocked(zone, &save.cleared_zones);
                         // The picked zone shows open, with its bosses.
@@ -659,7 +659,10 @@ fn spawn_menu(
                         let sub = if playable {
                             sub.to_string()
                         } else {
-                            format!("Kilitli: önce {} bitir", ZoneId::ALL[i - 1].def().name)
+                            format!(
+                                "Kilitli: önce {} bitir",
+                                zone.after().map_or("", |a| a.def().name)
+                            )
                         };
                         let mut row = c.spawn((
                             Node {
@@ -704,9 +707,16 @@ fn spawn_menu(
                                 })
                                 .with_children(|chips| {
                                     for b in ELWYNN_BOSSES.iter() {
-                                        let when = b
-                                            .arrives_at()
-                                            .map_or("Bekliyor".to_string(), clock);
+                                        // A dungeon's bosses come with the packs cleared.
+                                        let when = match b.arrives_at() {
+                                            Some(t) if zone.def().dungeon => format!(
+                                                "{} paket",
+                                                (t / zones::PACK_SECONDS).ceil()
+                                            ),
+                                            Some(t) => clock(t),
+                                            None if zone.def().dungeon => continue,
+                                            None => "Bekliyor".to_string(),
+                                        };
                                         chips
                                             .spawn((
                                                 Node {
@@ -820,6 +830,7 @@ fn sync_zone(
     choices: Query<(&Interaction, &ZoneChoice), Changed<Interaction>>,
     classes: Query<(&Interaction, &ClassChoice), Changed<Interaction>>,
     mut heroes: Query<&mut Transform, With<crate::game::Hero>>,
+    map: Option<ResMut<benilla_world::world_map::CurrentMap>>,
 ) {
     use crate::content::zones;
     for (i, c) in &choices {
@@ -847,9 +858,19 @@ fn sync_zone(
         return;
     }
     zones::set_current(want);
+    // A dungeon is a map of its own (the engine streams it on the change).
+    if let Some(mut map) = map {
+        if map.0 != want.def().map {
+            map.0 = want.def().map;
+        }
+    }
     if std::env::var(crate::config::START_VAR).is_err() {
         let (x, y) = want.def().start;
-        start.0 = crate::config::StartPoint { x, y, z: None };
+        start.0 = crate::config::StartPoint {
+            x,
+            y,
+            z: want.def().start_z,
+        };
         if let Ok(mut xf) = heroes.single_mut() {
             xf.translation = benilla_assets::coords::wow_to_bevy(start.0.wow());
         }

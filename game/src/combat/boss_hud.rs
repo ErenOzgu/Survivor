@@ -377,7 +377,12 @@ fn update_boss_texts(
     let banner = if cards.is_open() {
         String::new()
     } else {
-        arrival_banner(run.time, state.start, &ELWYNN_BOSSES).unwrap_or_default()
+        arrival_banner(
+            super::dungeon::boss_clock(&run),
+            state.start,
+            &ELWYNN_BOSSES,
+        )
+        .unwrap_or_default()
     };
     if let Ok(mut t) = texts.p0().single_mut() {
         set(&mut t, &banner);

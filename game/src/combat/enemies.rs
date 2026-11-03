@@ -174,6 +174,10 @@ fn spawn_waves(
     let Ok(hero) = heroes.single() else {
         return;
     };
+    // A dungeon has packs, not waves (`dungeon`).
+    if super::dungeon::in_dungeon() {
+        return;
+    }
     spawner.next -= time.delta_secs();
     if spawner.next > 0.0 {
         return;
@@ -256,6 +260,7 @@ fn move_enemies(
         .collect();
 
     let mut cache = None;
+    let dungeon = super::dungeon::in_dungeon();
     for (i, (mut xf, mut e, boss)) in enemies.iter_mut().enumerate() {
         e.frozen = (e.frozen - dt).max(0.0);
         e.slow_left = (e.slow_left - dt).max(0.0);
@@ -264,7 +269,7 @@ fn move_enemies(
         e.knock = (e.knock - dt).max(0.0);
 
         let mut pos = xf.translation;
-        if rules::flat_dist(pos, hero_pos) > LEASH {
+        if rules::flat_dist(pos, hero_pos) > LEASH && !dungeon {
             let angle = rng.0.range(0.0, std::f32::consts::TAU);
             pos = rules::ring_point(hero_pos, angle, SPAWN_RING_MAX);
         }
@@ -306,6 +311,12 @@ fn move_enemies(
             (Some(s), Some(a)) => terrain_height_under_cached(s, a, new_pos, &mut cache),
             _ => None,
         };
+        // In a dungeon the floor is a building's: a ray finds it.
+        let ground = ground.or_else(|| {
+            dungeon
+                .then(|| crate::game::floor_under(&world, new_pos.with_y(xf.translation.y)))
+                .flatten()
+        });
         new_pos.y = ground.unwrap_or(hero_pos.y);
 
         let dir = (hero_pos - new_pos).with_y(0.0);

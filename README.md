@@ -100,6 +100,12 @@ oynanabilir bir savaş döngüsü kurar:
   eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
   (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
   Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Dungeon: Deadmines** (Westfall bitince açılır; ana menünün bölge listesinde). Ayrı bir harita
+  (Map.dbc 36), istemcinin kendi Deadmines'ı; zemin binanın kendisi (aşağı ışınla bulunur). Dalga
+  yok: önünde 4–6 düşmanlık paketler bekler (görüş hattında, zeminde), yaklaşınca ya da birine
+  vurunca bütün paket gelir. Her temizlenen paket boss saatini ilerletir: ~5 pakette ilk boss,
+  ~10'da ikincisi, ~15'te Defias Lideri. Elit yok. İlk deneme: giriş noktası ve paket yerleri
+  oyunda denenecek.
 - **Sınıflar:** Büyücü, Kara Büyücü (Warlock) ve Rahip (Priest), ana menünün sınıf ızgarasından
   seçilir. Hepsi aynı skill rollerini oynar (yavaşlatan ok, patlayan ok, yaylım, donduran nova,
   iki yer alanı, çevre patlaması, kaçış, üç evrim), sayılar dengede kalır; ama her sınıf kendi WoW

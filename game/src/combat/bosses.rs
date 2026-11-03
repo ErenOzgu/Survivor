@@ -284,6 +284,7 @@ fn spawn_timed_bosses(
     placeholders: Res<Placeholders>,
     assets: Res<BossAssets>,
     heroes: Query<&Transform, With<Hero>>,
+    world: benilla_world::collision::WorldCollision,
 ) {
     let Ok(hero) = heroes.single() else {
         return;
@@ -292,12 +293,23 @@ fn spawn_timed_bosses(
         let Some(at) = def.arrives_at() else {
             continue;
         };
-        if !timed_due(at, bosses.start, run.time, bosses.spawned[idx]) {
+        if !timed_due(
+            at,
+            bosses.start,
+            super::dungeon::boss_clock(&run),
+            bosses.spawned[idx],
+        ) {
             continue;
         }
         bosses.spawned[idx] = true;
         let angle = rng.0.range(0.0, std::f32::consts::TAU);
-        let pos = rules::ring_point(hero.translation, angle, SPAWN_RING_MIN);
+        let mut pos = rules::ring_point(hero.translation, angle, SPAWN_RING_MIN);
+        // In a dungeon it comes out where there is floor, not inside the rock.
+        if super::dungeon::in_dungeon() {
+            if let Some(p) = super::dungeon::pack_spot(&world, hero.translation, &mut rng.0) {
+                pos = p;
+            }
+        }
         let damage_mul =
             waves::wave_at(run.time).damage_mul * crate::content::zones::current().def().level_mul;
         spawn_boss(
@@ -316,6 +328,8 @@ fn spawn_timed_bosses(
 /// The spot of a guarding boss in Bevy space, at height `y`.
 pub fn guard_spot(def: &BossDef, y: f32) -> Option<Vec3> {
     match def.arrival {
+        // A dungeon has no guarding elite in the open.
+        Arrival::Guard { .. } if crate::content::zones::current().def().dungeon => None,
         Arrival::Guard { .. } => {
             // The guard waits at the zone's own spot.
             let at = crate::content::zones::current().def().guard;

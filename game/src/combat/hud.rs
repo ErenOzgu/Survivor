@@ -866,7 +866,16 @@ fn update_hud(
         **t = format!("XP {} / {}", run.xp, need);
     }
     if let Ok(mut t) = texts.p2().single_mut() {
-        **t = format!("{}   ·   {} düşman", clock(run.time), run.kills);
+        **t = if super::dungeon::in_dungeon() {
+            format!(
+                "{}   ·   {} düşman   ·   {} paket",
+                clock(run.time),
+                run.kills,
+                run.packs_cleared
+            )
+        } else {
+            format!("{}   ·   {} düşman", clock(run.time), run.kills)
+        };
     }
     notice.left = (notice.left - real.delta_secs()).max(0.0);
     if let Ok(mut t) = texts.p3().single_mut() {

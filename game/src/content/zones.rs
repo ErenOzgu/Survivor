@@ -16,6 +16,8 @@ pub enum ZoneId {
     Westfall,
     Redridge,
     Duskwood,
+    /// The dungeon: packs to pull and clear, bosses as they fall.
+    Deadmines,
 }
 
 /// A zone: where it is, how hard, what its creatures look like and are called.
@@ -27,6 +29,12 @@ pub struct ZoneDef {
     pub guard: (f32, f32),
     /// On enemies' and bosses' health and damage.
     pub level_mul: f32,
+    /// The `Map.dbc` map it is on (0 the Eastern Kingdoms), and the start's height when the ground
+    /// there is a building's (a dungeon), not terrain.
+    pub map: u32,
+    pub start_z: Option<f32>,
+    /// A dungeon: no waves; packs wait ahead, and clearing them brings the bosses.
+    pub dungeon: bool,
     /// Per enemy role (in [`EnemyKind::NORMAL`] order, then the elite's and the map boss's
     /// bodies): words its model path may hold, best first; empty keeps Elwynn's look.
     pub looks: [&'static [&'static str]; 7],
@@ -37,12 +45,25 @@ pub struct ZoneDef {
 }
 
 impl ZoneId {
-    pub const ALL: [ZoneId; 4] = [
+    pub const ALL: [ZoneId; 5] = [
         ZoneId::Elwynn,
         ZoneId::Westfall,
         ZoneId::Redridge,
         ZoneId::Duskwood,
+        ZoneId::Deadmines,
     ];
+
+    /// The zone that must be cleared to open this one.
+    pub fn after(self) -> Option<ZoneId> {
+        match self {
+            ZoneId::Elwynn => None,
+            ZoneId::Westfall => Some(ZoneId::Elwynn),
+            ZoneId::Redridge => Some(ZoneId::Westfall),
+            ZoneId::Duskwood => Some(ZoneId::Redridge),
+            // The Defias' hideout lies under Westfall.
+            ZoneId::Deadmines => Some(ZoneId::Westfall),
+        }
+    }
 
     pub fn def(self) -> &'static ZoneDef {
         match self {
@@ -50,6 +71,7 @@ impl ZoneId {
             ZoneId::Westfall => &WESTFALL,
             ZoneId::Redridge => &REDRIDGE,
             ZoneId::Duskwood => &DUSKWOOD,
+            ZoneId::Deadmines => &DEADMINES,
         }
     }
 
@@ -59,6 +81,7 @@ impl ZoneId {
             ZoneId::Westfall => "westfall",
             ZoneId::Redridge => "redridge",
             ZoneId::Duskwood => "duskwood",
+            ZoneId::Deadmines => "deadmines",
         }
     }
 
@@ -77,6 +100,9 @@ static ELWYNN: ZoneDef = ZoneDef {
     start: crate::config::DEFAULT_START,
     guard: super::waves::GNOLL_CHIEF_AT,
     level_mul: 1.0,
+    map: 0,
+    start_z: None,
+    dungeon: false,
     looks: [&[], &[], &[], &[], &[], &[], &[]],
     names: ["", "", "", "", "", "", ""],
     boss_names: ["", "", "", ""],
@@ -88,6 +114,9 @@ static WESTFALL: ZoneDef = ZoneDef {
     start: (-10420.0, 1150.0),
     guard: (-9900.0, 1350.0),
     level_mul: 1.35,
+    map: 0,
+    start_z: None,
+    dungeon: false,
     looks: [
         &["murloc"],
         &["coyote", "jackal", "wolf"],
@@ -120,6 +149,9 @@ static REDRIDGE: ZoneDef = ZoneDef {
     start: (-9150.0, -2050.0),
     guard: (-9050.0, -2350.0),
     level_mul: 1.75,
+    map: 0,
+    start_z: None,
+    dungeon: false,
     looks: [
         &["gnoll"],
         &["wolf"],
@@ -152,6 +184,9 @@ static DUSKWOOD: ZoneDef = ZoneDef {
     start: (-10400.0, -1100.0),
     guard: (-10700.0, -900.0),
     level_mul: 2.2,
+    map: 0,
+    start_z: None,
+    dungeon: false,
     looks: [
         &["skeleton"],
         &["worgen"],
@@ -177,6 +212,46 @@ static DUSKWOOD: ZoneDef = ZoneDef {
         "Mezar Devi",
     ],
 };
+
+static DEADMINES: ZoneDef = ZoneDef {
+    name: "Deadmines",
+    sub: "Zindan: paketleri temizle, bosslara ilerle",
+    // The instance's own entrance (map 36), where the client puts a player who walks in.
+    start: (-16.4, -383.07),
+    guard: (0.0, 0.0),
+    level_mul: 1.6,
+    map: 36,
+    start_z: Some(61.78),
+    dungeon: true,
+    looks: [
+        &["kobold"],
+        &["goblin", "kobold"],
+        &["spider", "rat"],
+        &["kobold"],
+        &["kobold"],
+        &["goblin", "ogre"],
+        &[],
+    ],
+    names: [
+        "Kobold Madenci",
+        "Goblin Mühendis",
+        "Maden Örümceği",
+        "Kobold Falcı",
+        "Kobold Lağımcı",
+        "Goblin Ustabaşı",
+        "",
+    ],
+    boss_names: [
+        "Goblin Ustabaşı",
+        "Madenci Şef",
+        "Kızıl Pençe",
+        "Defias Lideri",
+    ],
+};
+
+/// Seconds of a dungeon's boss clock each cleared pack is worth: the bosses' times (3:00, 6:30,
+/// 10:00) come after about 5, 10 and 15 packs.
+pub const PACK_SECONDS: f32 = 40.0;
 
 /// The zone the run is in (set when a run starts in it).
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
@@ -230,7 +305,7 @@ pub fn boss_name_in(zone: ZoneId, def: &BossDef) -> Option<&'static str> {
 
 /// Whether a zone is open: the first always; the next once the one before it was cleared.
 pub fn unlocked(z: ZoneId, cleared: &[ZoneId]) -> bool {
-    z.index() == 0 || cleared.iter().any(|c| c.index() + 1 == z.index())
+    z.after().is_none_or(|a| cleared.contains(&a))
 }
 
 #[cfg(test)]
@@ -243,6 +318,11 @@ mod tests {
         assert!(!unlocked(ZoneId::Westfall, &[]));
         assert!(unlocked(ZoneId::Westfall, &[ZoneId::Elwynn]));
         assert!(!unlocked(ZoneId::Duskwood, &[ZoneId::Elwynn]));
+        assert!(unlocked(
+            ZoneId::Deadmines,
+            &[ZoneId::Elwynn, ZoneId::Westfall]
+        ));
+        assert!(ZoneId::Deadmines.def().dungeon && ZoneId::Deadmines.def().map == 36);
         for z in ZoneId::ALL {
             assert_eq!(ZoneId::from_key(z.key()), Some(z));
             assert!(z.def().level_mul >= 1.0);

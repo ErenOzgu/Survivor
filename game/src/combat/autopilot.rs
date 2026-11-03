@@ -397,6 +397,7 @@ mod tests {
             revive_used: false,
             start_applied: false,
             abilities: Default::default(),
+            packs_cleared: 0,
         };
         let r = row(2, "ornek", &run, (80.0, 100.0), 12);
         assert_eq!(r, "2,ornek,61,4,80,100,30,12,frostbolt1,");

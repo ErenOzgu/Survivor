@@ -18,6 +18,7 @@ pub mod cards;
 pub mod char_view;
 pub mod collide;
 pub mod crafting_ui;
+pub mod dungeon;
 pub mod enemies;
 pub mod flat;
 pub mod fx;
@@ -138,6 +139,7 @@ impl Plugin for CombatPlugin {
                 boss_portrait::BossPortraitPlugin,
                 crafting_ui::CraftingPlugin,
                 card_scene::CardScenePlugin,
+                dungeon::DungeonPlugin,
             ));
     }
 }
@@ -177,6 +179,8 @@ pub struct Run {
     pub start_applied: bool,
     /// The cooldown spells (Z, X, C).
     pub abilities: rules::AbilityState,
+    /// Dungeon packs cleared (the dungeon's boss clock).
+    pub packs_cleared: u32,
 }
 
 impl Run {
@@ -193,6 +197,7 @@ impl Run {
             revive_used: false,
             start_applied: false,
             abilities: rules::AbilityState::default(),
+            packs_cleared: 0,
         }
     }
 }
