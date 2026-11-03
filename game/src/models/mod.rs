@@ -60,6 +60,36 @@ pub fn creature_displays_in_folder(data: &ModelData, folder: &str) -> Vec<u32> {
     test_spawn::displays_by_folder(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), folder)
 }
 
+/// Rebuilds an entity's model for a new request (the hero's gear changed): the old model goes and
+/// the new one is built as for a fresh request.
+pub fn rebuild_model(
+    commands: &mut Commands,
+    entity: Entity,
+    request: ModelRequest,
+    old_root: Option<Entity>,
+) {
+    if let Some(root) = old_root {
+        commands.entity(root).try_despawn();
+    }
+    commands
+        .entity(entity)
+        .remove::<(ModelStatus, ModelRoot, build::Pending)>()
+        .insert(request);
+}
+
+/// The client's look for one worn item: `slot`'s candidate the seed picks, as `(display id, icon
+/// path)`. `None` without tables or candidates.
+pub fn item_look(data: &ModelData, slot: GearSlot, seed: u32) -> Option<(u32, Option<String>)> {
+    let cat = data.tables.as_ref()?.items.as_ref()?;
+    let ids = gear::slot_displays(cat.iter(), slot);
+    let id = *ids.get(seed as usize % ids.len().max(1))?;
+    let icon = cat
+        .get(id)
+        .and_then(|d| d.icon.clone())
+        .map(|i| format!("Interface\\Icons\\{i}"));
+    Some((id, icon))
+}
+
 /// What model an entity wants.
 #[derive(Component, Clone, Debug)]
 pub enum ModelRequest {

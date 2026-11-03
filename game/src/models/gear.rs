@@ -68,6 +68,55 @@ pub fn mage_gear<'a>(
     out
 }
 
+/// Whether an `ItemDisplayInfo` row looks like an item for `slot`, by what it paints and carries.
+/// Body regions: 0 upper arm, 1 lower arm, 2 hand, 3 upper torso, 4 lower torso, 5 upper leg,
+/// 6 lower leg, 7 foot.
+pub fn fits_slot(d: &ItemDisplay, slot: GearSlot) -> bool {
+    let r = |i: usize| d.region_textures[i].is_some();
+    let model = d.model[0].as_deref().map(str::to_ascii_lowercase);
+    match slot {
+        GearSlot::Chest => is_robe(d),
+        GearSlot::MainHand => is_staff(d),
+        GearSlot::Hands => r(2) && !r(3) && !r(5) && model.is_none(),
+        GearSlot::Legs => r(5) && r(6) && !r(3) && d.geoset_groups[2] == 0 && model.is_none(),
+        GearSlot::Feet => r(7) && !r(3) && !r(5) && model.is_none(),
+        GearSlot::Head => model.is_some_and(|m| m.starts_with("helm")),
+        _ => false,
+    }
+}
+
+/// Every display id that fits `slot`, lowest first.
+pub fn slot_displays<'a>(
+    catalog: impl Iterator<Item = (u32, &'a ItemDisplay)>,
+    slot: GearSlot,
+) -> Vec<u32> {
+    let mut ids: Vec<u32> = catalog
+        .filter(|(_, d)| fits_slot(d, slot))
+        .map(|(id, _)| id)
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// Replaces (or adds) each picked slot in `items` with the display its seed picks among the
+/// slot's candidates; a slot with no candidate keeps what it had.
+pub fn apply_picks<'a>(
+    items: &mut Vec<GearItem>,
+    picks: &[(GearSlot, u32)],
+    catalog: impl Iterator<Item = (u32, &'a ItemDisplay)>,
+) {
+    let rows: Vec<(u32, &ItemDisplay)> = catalog.collect();
+    for &(slot, seed) in picks {
+        let ids = slot_displays(rows.iter().copied(), slot);
+        if ids.is_empty() {
+            continue;
+        }
+        let display_id = ids[seed as usize % ids.len()];
+        items.retain(|i| i.slot != slot);
+        items.push(GearItem { slot, display_id });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +148,47 @@ mod tests {
             |id| rows.get(&id),
             rows.iter().map(|(k, v)| (*k, v)),
         )
+    }
+
+    #[test]
+    fn slots_are_told_apart_and_picks_replace() {
+        let mut gloves = ItemDisplay::default();
+        gloves.region_textures[2] = Some("Glove_HA".into());
+        let mut boots = ItemDisplay::default();
+        boots.region_textures[7] = Some("Boot_FO".into());
+        let mut staff = ItemDisplay::default();
+        staff.model[0] = Some("Stave_2H_A_01.mdx".into());
+        let rows: HashMap<u32, ItemDisplay> =
+            [(10, gloves), (11, boots), (12, staff), (20, robe())]
+                .into_iter()
+                .collect();
+        let cat = || rows.iter().map(|(id, d)| (*id, d));
+        assert_eq!(slot_displays(cat(), GearSlot::Hands), vec![10]);
+        assert_eq!(slot_displays(cat(), GearSlot::Feet), vec![11]);
+        assert_eq!(slot_displays(cat(), GearSlot::MainHand), vec![12]);
+        assert_eq!(slot_displays(cat(), GearSlot::Chest), vec![20]);
+        let mut items = vec![GearItem {
+            slot: GearSlot::MainHand,
+            display_id: 99,
+        }];
+        apply_picks(
+            &mut items,
+            &[
+                (GearSlot::MainHand, 7),
+                (GearSlot::Hands, 3),
+                (GearSlot::Head, 1),
+            ],
+            cat(),
+        );
+        assert!(items.contains(&GearItem {
+            slot: GearSlot::MainHand,
+            display_id: 12
+        }));
+        assert!(items.contains(&GearItem {
+            slot: GearSlot::Hands,
+            display_id: 10
+        }));
+        assert_eq!(items.len(), 2, "no helm candidate: head unchanged");
     }
 
     #[test]

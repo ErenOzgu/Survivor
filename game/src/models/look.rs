@@ -155,6 +155,9 @@ pub enum Gear {
     /// A robe and a staff for a mage, chosen from the client's own tables at load
     /// ([`super::gear`]).
     MageDefault,
+    /// The mage default with these slots replaced: each `(slot, seed)` wears the client's
+    /// item look for that slot the seed picks ([`super::gear::slot_displays`]).
+    MageWith(Vec<(GearSlot, u32)>),
 }
 
 /// A player-character body.

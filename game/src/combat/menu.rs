@@ -1,5 +1,6 @@
 //! The main menu: shown when the game starts (and when the pause menu leaves to it), over the
-//! streaming world, with the records from the save. 1/Enter plays, 2 quits.
+//! streaming world, with the records from the save. 1/Enter plays, 2 opens the inventory, 3 the
+//! talents, 4 quits.
 //! `RNS_NOMENU=1` (and the autopilot) skip it.
 
 use bevy::app::AppExit;
@@ -21,6 +22,7 @@ impl Plugin for MenuPlugin {
         app.insert_resource(MainMenu {
             open: None,
             pending: !skip,
+            refresh: false,
         })
         .add_systems(Update, main_menu.in_set(CombatSet::Ui));
     }
@@ -31,6 +33,8 @@ impl Plugin for MenuPlugin {
 pub struct MainMenu {
     open: Option<Entity>,
     pending: bool,
+    /// Redraw when it shows again.
+    refresh: bool,
 }
 
 impl MainMenu {
@@ -40,8 +44,10 @@ impl MainMenu {
 }
 
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
-enum MenuChoice {
+pub(super) enum MenuChoice {
     Play,
+    Inventory,
+    Talents,
     Quit,
 }
 
@@ -62,7 +68,7 @@ pub fn record_lines(d: &SaveData) -> Vec<String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn main_menu(
+pub(super) fn main_menu(
     mut commands: Commands,
     mut menu: ResMut<MainMenu>,
     mut clock_v: ResMut<Time<Virtual>>,
@@ -73,6 +79,8 @@ fn main_menu(
     mut restarted: MessageReader<RestartRun>,
     buttons: Query<(&Interaction, &MenuChoice), Changed<Interaction>>,
     mut exit: MessageWriter<AppExit>,
+    mut inv: ResMut<super::gear_ui::Inventory>,
+    mut talents: ResMut<super::talent_ui::TalentScreen>,
 ) {
     if restarted.read().any(|r| r.to_menu) {
         menu.pending = true;
@@ -86,6 +94,18 @@ fn main_menu(
     let Some(root) = menu.open else {
         return;
     };
+    // A screen opened from here takes the keys until it closes; then the menu shows anew (the
+    // records and points may have changed).
+    if inv.is_open() || talents.is_open() {
+        menu.refresh = true;
+        return;
+    }
+    if menu.refresh {
+        menu.refresh = false;
+        commands.entity(root).try_despawn();
+        menu.open = Some(spawn_menu(&mut commands, &save.data, &font, &art));
+        return;
+    }
     let by_key = if keys.any_just_pressed([
         KeyCode::Digit1,
         KeyCode::Numpad1,
@@ -94,7 +114,11 @@ fn main_menu(
         KeyCode::Space,
     ]) {
         Some(MenuChoice::Play)
-    } else if keys.any_just_pressed([KeyCode::Digit2, KeyCode::Numpad2]) {
+    } else if keys.any_just_pressed([KeyCode::Digit2, KeyCode::Numpad2, KeyCode::KeyI]) {
+        Some(MenuChoice::Inventory)
+    } else if keys.any_just_pressed([KeyCode::Digit3, KeyCode::Numpad3, KeyCode::KeyT]) {
+        Some(MenuChoice::Talents)
+    } else if keys.any_just_pressed([KeyCode::Digit4, KeyCode::Numpad4]) {
         Some(MenuChoice::Quit)
     } else {
         None
@@ -109,6 +133,8 @@ fn main_menu(
             menu.open = None;
             clock_v.unpause();
         }
+        Some(MenuChoice::Inventory) => inv.request_open(),
+        Some(MenuChoice::Talents) => talents.request_open(),
         Some(MenuChoice::Quit) => {
             exit.write(AppExit::Success);
         }
@@ -169,15 +195,34 @@ fn spawn_menu(commands: &mut Commands, save: &SaveData, font: &UiFont, art: &Wow
                     ..default()
                 },
             ));
+            let free = save.free_points();
+            if free > 0 {
+                p.spawn((
+                    Text::new(format!("{free} boş talent puanın var!")),
+                    font.text(18.0),
+                    TextColor(Color::srgb(0.3, 1.0, 0.3)),
+                ));
+            }
             for (choice, label) in [
-                (MenuChoice::Play, "1  Oyna  (Enter)"),
-                (MenuChoice::Quit, "2  Çık"),
+                (MenuChoice::Play, "1  Oyna  (Enter)".to_string()),
+                (
+                    MenuChoice::Inventory,
+                    format!(
+                        "2  Envanter  ({} eşya)",
+                        save.bag.len() + save.equipped.len()
+                    ),
+                ),
+                (
+                    MenuChoice::Talents,
+                    format!("3  Talentlar  ({free} boş puan)"),
+                ),
+                (MenuChoice::Quit, "4  Çık".to_string()),
             ] {
                 p.spawn((
                     choice,
                     Button,
                     Node {
-                        width: Val::Px(260.0),
+                        width: Val::Px(340.0),
                         justify_content: JustifyContent::Center,
                         padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
                         border: UiRect::all(Val::Px(2.0)),
@@ -191,7 +236,7 @@ fn spawn_menu(commands: &mut Commands, save: &SaveData, font: &UiFont, art: &Wow
                 });
             }
             p.spawn((
-                Text::new("WASD yürü · Q/E kamera · Esc duraklat"),
+                Text::new("WASD yürü · Q/E kamera · I envanter · Esc duraklat"),
                 font.text(15.0),
                 TextColor(Color::srgb(0.7, 0.7, 0.7)),
             ));
@@ -209,7 +254,7 @@ mod tests {
     fn records_read_well() {
         assert_eq!(record_lines(&SaveData::default()).len(), 1);
         let mut d = SaveData::default();
-        d.record(452.0, 17, 610, Ending::Died);
+        d.record(452.0, 17, 610, 0, Ending::Died);
         let lines = record_lines(&d);
         assert_eq!(lines[0], "En uzun koşu: 07:32");
         assert!(lines[3].contains("1 koşu") && lines[3].contains("1 ölüm"));
@@ -220,6 +265,7 @@ mod tests {
         let m = MainMenu {
             open: None,
             pending: true,
+            refresh: false,
         };
         assert!(m.is_open(), "nothing else may open on the first frame");
     }

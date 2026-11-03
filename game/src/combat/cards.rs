@@ -123,8 +123,18 @@ fn open_cards(
     art: Res<WowArt>,
     pause: Res<super::pause::PauseMenu>,
     main_menu: Res<super::menu::MainMenu>,
+    (inv, loot): (
+        Res<super::gear_ui::Inventory>,
+        Res<super::gear_ui::LootScreen>,
+    ),
 ) {
-    if screen.is_open() || run.pending_cards == 0 || pause.is_open() || main_menu.is_open() {
+    if screen.is_open()
+        || run.pending_cards == 0
+        || pause.is_open()
+        || main_menu.is_open()
+        || inv.is_open()
+        || loot.is_open()
+    {
         return;
     }
     let cards = rules::roll_cards(&run.loadout, &run.passives, &mut rng.0, CARDS);

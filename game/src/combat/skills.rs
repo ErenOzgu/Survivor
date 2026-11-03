@@ -135,6 +135,7 @@ fn cast_skills(
     mut commands: Commands,
     time: Res<Time>,
     run: Res<Run>,
+    save: Res<super::save::Save>,
     assets: Res<Placeholders>,
     mut timers: ResMut<SkillTimers>,
     mut rng: ResMut<CombatRng>,
@@ -149,7 +150,7 @@ fn cast_skills(
     if dt <= 0.0 {
         return;
     }
-    let stats = Stats::from_passives(&run.passives);
+    let stats = Stats::from_parts(&run.passives, &save.data.bonus());
     let hero = hero_xf.translation;
     // Alive enemies, nearest first.
     let mut targets: Vec<Target> = enemies
@@ -373,6 +374,7 @@ fn move_projectiles(
     mut commands: Commands,
     time: Res<Time>,
     run: Res<Run>,
+    save: Res<super::save::Save>,
     assets: Res<Placeholders>,
     mut rng: ResMut<CombatRng>,
     mut projs: Query<(Entity, &mut Transform, &mut Projectile), Without<Enemy>>,
@@ -382,7 +384,7 @@ fn move_projectiles(
     if dt <= 0.0 {
         return;
     }
-    let stats = Stats::from_passives(&run.passives);
+    let stats = Stats::from_parts(&run.passives, &save.data.bonus());
     let rng = &mut rng.0;
     for (pe, mut xf, mut p) in &mut projs {
         p.life -= dt;
@@ -483,12 +485,13 @@ fn tick_zones(
     mut commands: Commands,
     time: Res<Time>,
     run: Res<Run>,
+    save: Res<super::save::Save>,
     mut rng: ResMut<CombatRng>,
     mut zones: Query<(Entity, &Transform, &mut Zone), Without<Enemy>>,
     mut enemies: Query<(&Transform, &mut Enemy), Without<Zone>>,
 ) {
     let dt = time.delta_secs();
-    let stats = Stats::from_passives(&run.passives);
+    let stats = Stats::from_parts(&run.passives, &save.data.bonus());
     let rng = &mut rng.0;
     for (ze, zxf, mut z) in &mut zones {
         z.life -= dt;

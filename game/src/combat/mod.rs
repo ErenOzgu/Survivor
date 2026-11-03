@@ -14,6 +14,7 @@ pub mod bosses;
 pub mod cards;
 pub mod enemies;
 pub mod flat;
+pub mod gear_ui;
 pub mod hero;
 pub mod hud;
 pub mod menu;
@@ -24,6 +25,7 @@ pub mod portal;
 pub mod rules;
 pub mod save;
 pub mod skills;
+pub mod talent_ui;
 pub mod visuals;
 pub mod xp;
 
@@ -96,6 +98,8 @@ impl Plugin for CombatPlugin {
                 save::SavePlugin,
                 menu::MenuPlugin,
                 autopilot::AutopilotPlugin,
+                gear_ui::GearUiPlugin,
+                talent_ui::TalentUiPlugin,
             ));
     }
 }
@@ -127,6 +131,12 @@ pub struct Run {
     pub kills: u32,
     /// Level-ups whose card has not been picked yet.
     pub pending_cards: u32,
+    /// All XP gathered this run (it feeds the talents at the end).
+    pub xp_total: u32,
+    /// The Ice Block talent's one revive was used.
+    pub revive_used: bool,
+    /// The talents' run-start gifts were given.
+    pub start_applied: bool,
 }
 
 impl Run {
@@ -139,6 +149,9 @@ impl Run {
             passives: debug.passives.clone(),
             kills: 0,
             pending_cards: debug.level.saturating_sub(1),
+            xp_total: 0,
+            revive_used: false,
+            start_applied: false,
         }
     }
 }

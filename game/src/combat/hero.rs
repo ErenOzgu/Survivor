@@ -6,11 +6,13 @@ use benilla_assets::coords::wow_to_bevy;
 
 use super::enemies::{Corpse, Enemy, EnemyBolt};
 use super::portal::MapCleared;
-use super::rules::{self, HERO_MAX_HEALTH, HERO_REGEN};
+use super::rules::{self, HERO_MAX_HEALTH};
+use super::save::Save;
 use super::skills::{Projectile, SkillTimers, Zone};
 use super::visuals::Flash;
 use super::xp::Orb;
 use super::{hero_on_ground, CombatSet, DebugStart, HeroDied, RestartRun, Run};
+use crate::content::talents::TalentEffect;
 use crate::game::{Hero, HeroSpeed, Start};
 
 pub struct HeroPlugin;
@@ -29,7 +31,8 @@ impl Plugin for HeroPlugin {
             .add_systems(
                 Update,
                 (check_death, reset_run).chain().in_set(CombatSet::Reset),
-            );
+            )
+            .add_systems(Update, run_start_gifts.in_set(CombatSet::Spawn));
     }
 }
 
@@ -78,11 +81,12 @@ pub struct DeathNotice {
 /// The passives' hero stats: more maximum health (the gain also heals) and a faster run.
 fn apply_stats(
     run: Res<Run>,
+    save: Res<Save>,
     mut health: ResMut<HeroHealth>,
     mut speed: ResMut<HeroSpeed>,
     mut base_speed: Local<Option<f32>>,
 ) {
-    let stats = rules::Stats::from_passives(&run.passives);
+    let stats = rules::Stats::from_parts(&run.passives, &save.data.bonus());
     if health.max != stats.max_health {
         let gain = stats.max_health - health.max;
         health.max = stats.max_health;
@@ -102,13 +106,16 @@ fn contact_damage(
     mut health: ResMut<HeroHealth>,
     heroes: Query<&Transform, With<Hero>>,
     enemies: Query<(&Transform, &Enemy)>,
+    run: Res<Run>,
+    save: Res<Save>,
 ) {
     let Ok(hero) = heroes.single() else {
         return;
     };
     let dt = time.delta_secs();
     health.invulnerable = (health.invulnerable - dt).max(0.0);
-    health.heal(HERO_REGEN * dt);
+    let regen = rules::Stats::from_parts(&run.passives, &save.data.bonus()).regen;
+    health.heal(regen * dt);
     if debug.god || health.invulnerable > 0.0 {
         return;
     }
@@ -124,10 +131,44 @@ fn contact_damage(
     health.current = h;
 }
 
-pub(super) fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
-    if health.current <= 0.0 {
-        died.write(HeroDied);
+/// A death, unless the Ice Block talent still has its revive for this run.
+pub(super) fn check_death(
+    mut health: ResMut<HeroHealth>,
+    mut run: ResMut<Run>,
+    save: Res<Save>,
+    mut notice: ResMut<DeathNotice>,
+    mut died: MessageWriter<HeroDied>,
+) {
+    if health.current > 0.0 {
+        return;
     }
+    let revive = save.data.talents.total(|e| match e {
+        TalentEffect::Revive(v) => Some(v),
+        _ => None,
+    });
+    if revive > 0.0 && !run.revive_used {
+        run.revive_used = true;
+        health.current = health.max * revive;
+        health.invulnerable = health.invulnerable.max(3.0);
+        notice.text = "Buz Bloğu! Ölümden döndün.".to_string();
+        notice.left = 2.5;
+        info!("rnsurvivors: Ice Block revive");
+        return;
+    }
+    died.write(HeroDied);
+}
+
+/// The talents' gifts at the start of a run: extra card picks.
+fn run_start_gifts(mut run: ResMut<Run>, save: Res<Save>) {
+    if run.start_applied {
+        return;
+    }
+    run.start_applied = true;
+    let cards = save.data.talents.total(|e| match e {
+        TalentEffect::StartCards(n) => Some(n as f32),
+        _ => None,
+    }) as u32;
+    run.pending_cards += cards;
 }
 
 /// Dying returns the hero to the map start with a fresh run: skills, level and XP reset, every
@@ -205,6 +246,7 @@ mod system_params {
         init(&mut world, contact_damage);
         init(&mut world, apply_stats);
         init(&mut world, check_death);
+        init(&mut world, run_start_gifts);
         init(&mut world, reset_run);
     }
 }

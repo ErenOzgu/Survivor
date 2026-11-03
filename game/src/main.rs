@@ -9,6 +9,7 @@ mod content;
 mod game;
 mod models;
 mod motion;
+mod settings;
 
 use bevy::prelude::*;
 
@@ -34,6 +35,9 @@ fn main() -> AppExit {
         warn!("rnsurvivors: SURVEY mode — unmet dependencies are warnings, not panics");
         app.set_error_handler(bevy::ecs::error::warn);
     }
+
+    // The launcher's saved Data folder, when WOW_DATA is not set.
+    settings::apply_wow_data();
 
     // The `mpq://` source must be registered before `AssetPlugin` (in `DefaultPlugins`) builds.
     match benilla_formats::wow_data() {

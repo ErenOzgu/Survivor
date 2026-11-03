@@ -3,7 +3,9 @@
 
 use bevy::math::{Vec2, Vec3};
 
+use crate::content::items::{Affix, Item};
 use crate::content::passives::{PassiveId, MAX_PASSIVES};
+use crate::content::talents::{TalentEffect, Talents};
 use crate::content::{SkillId, MAX_SKILLS};
 
 /// The hero's starting skill.
@@ -256,7 +258,83 @@ pub const CRIT_MULTIPLIER: f32 = 2.0;
 /// Cooldowns never go below this fraction of their table value.
 pub const MIN_COOLDOWN_MUL: f32 = 0.5;
 
-/// What the passives add up to.
+/// Lasting bonuses from outside the run: worn gear and talents. Fractions, except `health` and
+/// `regen` (hit points) and `crit_power` (added to the crit multiplier).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Bonus {
+    pub damage: f32,
+    pub haste: f32,
+    pub speed: f32,
+    pub health: f32,
+    pub magnet: f32,
+    pub crit: f32,
+    pub xp: f32,
+    pub regen: f32,
+    pub crit_power: f32,
+}
+
+impl Bonus {
+    /// What worn items give.
+    pub fn from_gear<'a>(items: impl Iterator<Item = &'a Item>) -> Bonus {
+        let mut b = Bonus::default();
+        for it in items {
+            b.damage += it.bonus(Affix::Power);
+            b.haste += it.bonus(Affix::Haste);
+            b.speed += it.bonus(Affix::Speed);
+            b.health += it.bonus(Affix::Health);
+            b.magnet += it.bonus(Affix::Magnet);
+            b.crit += it.bonus(Affix::Crit);
+            b.xp += it.bonus(Affix::Wisdom);
+        }
+        b
+    }
+
+    /// What bought talents give.
+    pub fn from_talents(t: &Talents) -> Bonus {
+        use TalentEffect as E;
+        Bonus {
+            damage: t.total(|e| matches!(e, E::Damage(_)).then(|| effect_value(e))),
+            haste: t.total(|e| matches!(e, E::Haste(_)).then(|| effect_value(e))),
+            health: t.total(|e| matches!(e, E::Health(_)).then(|| effect_value(e))),
+            crit: t.total(|e| matches!(e, E::Crit(_)).then(|| effect_value(e))),
+            xp: t.total(|e| matches!(e, E::Xp(_)).then(|| effect_value(e))),
+            regen: t.total(|e| matches!(e, E::Regen(_)).then(|| effect_value(e))),
+            crit_power: t.total(|e| matches!(e, E::CritPower(_)).then(|| effect_value(e))),
+            ..Bonus::default()
+        }
+    }
+
+    pub fn plus(self, o: Bonus) -> Bonus {
+        Bonus {
+            damage: self.damage + o.damage,
+            haste: self.haste + o.haste,
+            speed: self.speed + o.speed,
+            health: self.health + o.health,
+            magnet: self.magnet + o.magnet,
+            crit: self.crit + o.crit,
+            xp: self.xp + o.xp,
+            regen: self.regen + o.regen,
+            crit_power: self.crit_power + o.crit_power,
+        }
+    }
+}
+
+fn effect_value(e: TalentEffect) -> f32 {
+    use TalentEffect as E;
+    match e {
+        E::Health(v)
+        | E::Regen(v)
+        | E::Revive(v)
+        | E::Damage(v)
+        | E::Crit(v)
+        | E::CritPower(v)
+        | E::Haste(v)
+        | E::Xp(v) => v,
+        E::StartCards(n) => n as f32,
+    }
+}
+
+/// What the passives, gear and talents add up to.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Stats {
     pub damage_mul: f32,
@@ -265,20 +343,29 @@ pub struct Stats {
     pub max_health: f32,
     pub magnet_mul: f32,
     pub crit_chance: f32,
+    pub crit_mul: f32,
     pub xp_mul: f32,
+    /// Health regenerated per second.
+    pub regen: f32,
 }
 
 impl Stats {
     pub fn from_passives(p: &Passives) -> Self {
+        Self::from_parts(p, &Bonus::default())
+    }
+
+    pub fn from_parts(p: &Passives, x: &Bonus) -> Self {
         let b = |id: PassiveId| id.bonus(p.level_of(id));
         Stats {
-            damage_mul: 1.0 + b(PassiveId::Power),
-            cooldown_mul: (1.0 - b(PassiveId::Haste)).max(MIN_COOLDOWN_MUL),
-            speed_mul: 1.0 + b(PassiveId::Swiftness),
-            max_health: HERO_MAX_HEALTH + b(PassiveId::Vitality),
-            magnet_mul: 1.0 + b(PassiveId::Attraction),
-            crit_chance: (BASE_CRIT + b(PassiveId::Precision)).min(1.0),
-            xp_mul: 1.0 + b(PassiveId::Wisdom),
+            damage_mul: 1.0 + b(PassiveId::Power) + x.damage,
+            cooldown_mul: (1.0 - b(PassiveId::Haste) - x.haste).max(MIN_COOLDOWN_MUL),
+            speed_mul: 1.0 + b(PassiveId::Swiftness) + x.speed,
+            max_health: HERO_MAX_HEALTH + b(PassiveId::Vitality) + x.health,
+            magnet_mul: 1.0 + b(PassiveId::Attraction) + x.magnet,
+            crit_chance: (BASE_CRIT + b(PassiveId::Precision) + x.crit).min(1.0),
+            crit_mul: CRIT_MULTIPLIER + x.crit_power,
+            xp_mul: 1.0 + b(PassiveId::Wisdom) + x.xp,
+            regen: HERO_REGEN + x.regen,
         }
     }
 }
@@ -293,7 +380,7 @@ impl Default for Stats {
 /// Returns the damage and whether it crit.
 pub fn hit_damage(base: f32, stats: &Stats, roll: f32) -> (f32, bool) {
     let crit = roll < stats.crit_chance;
-    let mul = if crit { CRIT_MULTIPLIER } else { 1.0 };
+    let mul = if crit { stats.crit_mul } else { 1.0 };
     (base * stats.damage_mul * mul, crit)
 }
 
@@ -805,6 +892,36 @@ mod tests {
         let s = Stats::from_passives(&maxed_passives());
         assert!(s.damage_mul > 1.4 && s.cooldown_mul < 0.7 && s.cooldown_mul >= MIN_COOLDOWN_MUL);
         assert!(s.max_health > HERO_MAX_HEALTH);
+    }
+
+    #[test]
+    fn gear_and_talents_add_in() {
+        use crate::content::items::{ItemSlot, Rarity};
+        use crate::content::talents::TalentId;
+        let staff = Item {
+            slot: ItemSlot::Weapon,
+            rarity: Rarity::Rare,
+            level: 5,
+            affixes: vec![(Affix::Power, 0.1), (Affix::Health, 12.0)],
+            look: 0,
+        };
+        let mut t = Talents::default();
+        t.buy(TalentId::IceShell, 9);
+        for _ in 0..3 {
+            t.buy(TalentId::Fervor, 9);
+        }
+        t.buy(TalentId::Ignition, 9);
+        let b = Bonus::from_gear([&staff].into_iter()).plus(Bonus::from_talents(&t));
+        let s = Stats::from_parts(&Passives::default(), &b);
+        assert!((s.damage_mul - 1.22).abs() < 1e-5, "{}", s.damage_mul);
+        assert_eq!(s.max_health, HERO_MAX_HEALTH + 22.0);
+        assert!((s.crit_chance - (BASE_CRIT + 0.03)).abs() < 1e-6);
+        assert_eq!(s.crit_mul, CRIT_MULTIPLIER);
+        t.buy(TalentId::Searing, 99); // gate: needs 5 in fire, has 4
+        assert_eq!(Bonus::from_talents(&t).crit_power, 0.0);
+        t.buy(TalentId::Ignition, 99);
+        t.buy(TalentId::Searing, 99);
+        assert_eq!(Bonus::from_talents(&t).crit_power, 0.5);
     }
 
     #[test]

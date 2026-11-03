@@ -166,7 +166,7 @@ fn resolve_character(
         .ok_or_else(|| format!("no body model for race {race} sex {sex}"))?;
     let items = match &look.gear {
         Gear::Items(items) => items.clone(),
-        Gear::MageDefault => {
+        Gear::MageDefault | Gear::MageWith(_) => {
             let outfit: Vec<(u32, u8)> = t
                 .races
                 .as_ref()
@@ -178,7 +178,13 @@ fn resolve_character(
                 })
                 .unwrap_or_default();
             match t.items.as_ref() {
-                Some(cat) => gear::mage_gear(&outfit, |id| cat.get(id), cat.iter()),
+                Some(cat) => {
+                    let mut items = gear::mage_gear(&outfit, |id| cat.get(id), cat.iter());
+                    if let Gear::MageWith(picks) = &look.gear {
+                        gear::apply_picks(&mut items, picks, cat.iter());
+                    }
+                    items
+                }
                 None => Vec::new(),
             }
         }

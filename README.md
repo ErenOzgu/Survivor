@@ -260,10 +260,51 @@ numarası, ikonu, efekt modellerinin yolları (füze, cast, impact…), pasif ik
 dokularının bulunup bulunmadığı. Sadece numara ve dosya yolu içerir, WoW verisinin kendisini
 değil; git'e girmez. Bir sorun olursa bu dosyayı paylaşmak yeterli.
 
+### Ganimet ve envanter (Aşama 4)
+
+- **Düşüşler:** elit ve mini boss'lar ölünce yere dönen bir **ganimet kesesi** bırakır (üstünden
+  geç, alınır). Defias Lideri'nin **sandığı** 3 eşya verir ve bir ganimet ekranı açar. Koşu biterken
+  yerde kalan keseler de çantaya girer.
+- **Eşyalar:** 6 yuva (baş, göğüs, eller, bacaklar, ayaklar, silah), 4 nadirlik (Sıradan beyaz,
+  Kaliteli yeşil, Nadir mavi, Destansı mor). Her eşya 1–3 bonus taşır: büyü hasarı, bekleme,
+  koşu hızı, can, XP çekimi, kritik, XP. Silahta hep büyü hasarı vardır. Bonuslar düştüğü
+  andaki level ile biraz büyür. Adı ana bonusundan gelir ("Keskin Büyücü Cübbesi").
+- **Envanter (I):** giyilenler, 24'lük çanta, seçili eşyanın ayrıntısı ve **giyilenle farkı**,
+  toplam güçler. Eşyaya tıkla (seç), bir daha tıkla ya da E: giy; U: çıkar; X: at. Koşu
+  sırasında açılınca oyun durur; ana menüden de açılır.
+- **Karakterde görünür:** giyilen göğüs, eller, bacaklar, ayaklar ve silah kahramanın WoW
+  modelinde görünür. Görünüm, istemcinin o yuvaya uyan `ItemDisplayInfo` satırlarından eşyanın
+  kendine has numarasıyla seçilir; ikonu da o satırdan gelir. Başlık şimdilik görünmez (modeller
+  kaskı henüz kafaya takmıyor).
+- Eşyalar ve giyilenler kayıt dosyasında tutulur.
+
+### Talentlar (Aşama 5)
+
+Koşularda toplanan bütün XP **talent XP'sine** eklenir; her talent puanı bir öncekinden biraz
+pahalıdır (150, 210, 270… XP). Ana menüde **3 Talentlar**:
+
+| Kol | Kademe 1 (0 puan) | Kademe 2 (kolda 3 puan) | Kademe 3 (kolda 5 puan) |
+|---|---|---|---|
+| Buz · Savunma | Buz Kabuğu: +10 can ×3 | Soğuk Kan: +0,3 can/sn ×2 | Buz Bloğu: koşu başına bir kez ölmezsin |
+| Ateş · Saldırı | Kızgınlık: +%4 hasar ×3 | Tutuşma: +%3 kritik ×2 | Yakıcı Güç: kritik 2,5 kat |
+| Arkan · Fayda | Arkan Zihin: -%3 bekleme ×3 | Bilgelik Pınarı: +%8 XP ×2 | Hazırlık: her koşu +1 kart seçimiyle başlar |
+
+Tıkla: puan ver. R: bütün puanları ücretsiz geri al.
+
+### Launcher
+
+Repo klasöründeki **`Rnsurvivors.bat`**'a çift tıkla. İlk seferde WoW 1.12.1 `Data` klasörünü
+(içinde `dbc.MPQ` olan) bir klasör seçme penceresiyle sorar, `%APPDATA%\Rnsurvivors\ayarlar.txt`'e
+kaydeder, sonra oyunu açar (derlenmemişse önce derler). Klasörü değiştirmek için:
+`Rnsurvivors.bat -Ayarla`. Oyun bu ayar dosyasını kendisi de okur; `WOW_DATA` artık şart değil
+(verilirse o geçerli). Betik PowerShell'i `-ExecutionPolicy Bypass` ile çalıştırır: sadece bu
+betik için, sistem ayarını değiştirmez.
+
 ### Ana menü ve kayıt
 
-Oyun ana menüyle açılır: rekorlar (en uzun koşu, en yüksek level, bir koşuda en çok düşman) ve
-toplamlar (koşu, ölüm, tamamlanan harita). Her koşu bitince (ölüm, portal, menüden baştan
+Oyun ana menüyle açılır: rekorlar (en uzun koşu, en yüksek level, bir koşuda en çok düşman),
+toplamlar (koşu, ölüm, tamamlanan harita), boş talent puanı; 1 Oyna, 2 Envanter, 3 Talentlar,
+4 Çık. Her koşu bitince (ölüm, portal, menüden baştan
 başlatma) kayıt güncellenir. Kayıt dosyası Windows'ta `%APPDATA%\Rnsurvivors\kayit.txt`;
 düz metin, silinirse rekorlar sıfırlanır. Esc menüsünden ana menüye dönülebilir.
 
@@ -275,7 +316,8 @@ düz metin, silinirse rekorlar sıfırlanır. Esc menüsünden ana menüye dön�
 | Fare tekerleği | Yakınlaş / uzaklaş |
 | Q / E | Kamerayı döndür |
 | 1 / 2 / 3 (ya da tıkla) | Level atlayınca kart seç |
-| Esc | Duraklat / devam (menüde 2: baştan başlat, 3: çık) |
+| Esc | Duraklat / devam (menüde 2: baştan başlat, 3: ana menü, 4: çık) |
+| I | Envanter (oyun durur) |
 | Enter / Boşluk (ya da tıkla) | "Harita tamamlandı" ekranını kapat, haritaya baştan başla |
 | F8 | Kahramanın çevresine test yaratıkları çıkar (bir kez) |
 | F9 | Test yaratıklarının animasyonunu sıradakine geçir (idle → walk → run → cast → attack → hit → death) |

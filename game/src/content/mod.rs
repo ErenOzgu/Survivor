@@ -5,8 +5,10 @@
 
 pub mod bosses;
 pub mod enemies;
+pub mod items;
 pub mod passives;
 pub mod skills;
+pub mod talents;
 pub mod waves;
 
 pub use enemies::EnemyKind;
