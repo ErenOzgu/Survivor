@@ -159,6 +159,7 @@ fn spawn_waves(
     assets: Res<Placeholders>,
     heroes: Query<&Transform, With<Hero>>,
     enemies: Query<(), With<Enemy>>,
+    bosses: Query<&super::bosses::Boss, With<Enemy>>,
 ) {
     let Ok(hero) = heroes.single() else {
         return;
@@ -167,7 +168,9 @@ fn spawn_waves(
     if spawner.next > 0.0 {
         return;
     }
-    let wave = waves::wave_at(run.time);
+    // A boss in the fight (a mini or the map boss; a guarding elite once woken) calms the waves.
+    let fighting = bosses.iter().any(|b| b.awake);
+    let wave = waves::calmed(waves::wave_at(run.time), fighting);
     spawner.next = wave.interval;
     let alive = enemies.iter().count() as u32;
     if alive >= wave.max_alive {
