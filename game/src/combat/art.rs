@@ -39,6 +39,8 @@ pub const CLASS_ICONS: &str = "Interface\\Glues\\CharacterCreate\\UI-CharacterCr
 pub const MAIN_BAR: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf";
 pub const END_CAP: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf";
 pub const MINIMAP_BORDER: &str = "Interface\\Minimap\\UI-Minimap-Border";
+pub const MINIMAP_ZOOM_IN: &str = "Interface\\Minimap\\UI-Minimap-ZoomInButton-Up";
+pub const MINIMAP_ZOOM_OUT: &str = "Interface\\Minimap\\UI-Minimap-ZoomOutButton-Up";
 pub const BOSS_SKULL: &str = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull";
 /// The character window: its four frame pieces, its close button, and the empty slots' pictures.
 pub const PAPERDOLL: [&str; 4] = [
@@ -67,7 +69,7 @@ pub const SLOT_PICTURES: [&str; 16] = [
     "Interface\\Paperdoll\\UI-PaperDoll-Slot-Ranged",
 ];
 /// Every interface texture loaded at start (beside the character window's).
-pub const UI_TEXTURES: [&str; 14] = [
+pub const UI_TEXTURES: [&str; 16] = [
     STATUS_BAR,
     PLATE_BORDER,
     DIALOG_BACKGROUND,
@@ -81,6 +83,8 @@ pub const UI_TEXTURES: [&str; 14] = [
     MAIN_BAR,
     END_CAP,
     MINIMAP_BORDER,
+    MINIMAP_ZOOM_IN,
+    MINIMAP_ZOOM_OUT,
     BOSS_SKULL,
 ];
 /// The mage talent trees' paintings (their top-left piece), behind the level-up cards' icons.
