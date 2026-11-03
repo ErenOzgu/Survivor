@@ -133,8 +133,10 @@ pub struct WowArt {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CardArt {
     Talent,
-    #[default]
     Loading,
+    /// The hero casting the card's skill, live (a painting for the other cards).
+    #[default]
+    Scene,
 }
 
 pub const CARD_ART_VAR: &str = "RNS_CARD_ART";
@@ -144,6 +146,7 @@ impl CardArt {
         match v.trim().to_ascii_lowercase().as_str() {
             "agac" | "ağaç" | "talent" => Some(CardArt::Talent),
             "yukleme" | "yükleme" | "loading" => Some(CardArt::Loading),
+            "sahne" | "scene" => Some(CardArt::Scene),
             _ => None,
         }
     }

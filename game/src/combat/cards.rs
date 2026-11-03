@@ -243,9 +243,20 @@ struct CardLook<'a> {
     art: &'a WowArt,
     images: &'a Assets<Image>,
     mode: CardArt,
+    /// The live scenes' pictures, when the hero's model is in to cast in them.
+    scenes: Option<&'a super::card_scene::CardScenes>,
 }
 
 impl CardLook<'_> {
+    /// Card `i`'s live scene, if it shows one (a skill card, scenes on).
+    fn scene(&self, i: usize, card: Card) -> Option<Handle<Image>> {
+        if self.mode != CardArt::Scene {
+            return None;
+        }
+        super::card_scene::card_skill(card)?;
+        self.scenes?.image(i)
+    }
+
     /// The painting behind the icon and the part of it the oval shows.
     fn painting(&self, school: School) -> Option<(Handle<Image>, Rect)> {
         match self.mode {
@@ -254,7 +265,7 @@ impl CardLook<'_> {
                 // The middle of the 256² top-left piece, at the oval's proportions.
                 Some((img, Rect::new(0.0, 22.0, 256.0, 240.0)))
             }
-            CardArt::Loading => {
+            CardArt::Loading | CardArt::Scene => {
                 let img = self.art.scenes.get(school.scene_key())?.clone();
                 let size = self.images.get(&img)?.size_f32();
                 Some((img, scene_crop(size.x, size.y, ART_W / ART_H, 0.62)))
@@ -270,17 +281,23 @@ struct CardGlow(Color);
 const CARD_W: f32 = 260.0;
 const ART_W: f32 = 204.0;
 const ART_H: f32 = 170.0;
+/// The live scene's height on the card.
+const SCENE_H: f32 = 180.0;
 
 #[allow(clippy::too_many_arguments)]
 fn open_cards(
     mut commands: Commands,
     mut screen: ResMut<CardScreen>,
     mut rng: ResMut<CombatRng>,
-    mut clock: ResMut<Time<Virtual>>,
+    mut hold: ResMut<super::CardHold>,
     run: Res<Run>,
     font: Res<UiFont>,
     art: Res<WowArt>,
     (images, mut mode): (Res<Assets<Image>>, Local<Option<CardArt>>),
+    (scenes, heroes): (
+        Option<Res<super::card_scene::CardScenes>>,
+        Query<&crate::models::ModelStatus, With<crate::game::Hero>>,
+    ),
     pause: Res<super::pause::PauseMenu>,
     main_menu: Res<super::menu::MainMenu>,
     (inv, loot, craft): (
@@ -300,13 +317,17 @@ fn open_cards(
         return;
     }
     let mode = *mode.get_or_insert_with(CardArt::from_settings);
+    let hero_ready = heroes
+        .single()
+        .is_ok_and(|s| matches!(s, crate::models::ModelStatus::Ready));
     let look = CardLook {
         art: &art,
         images: &images,
         mode,
+        scenes: scenes.as_deref().filter(|_| hero_ready),
     };
     let cards = rules::roll_cards(&run.loadout, &run.passives, &mut rng.0, CARDS);
-    clock.pause();
+    hold.0 = true;
 
     let root = commands
         .spawn((
@@ -381,7 +402,7 @@ fn spawn_card(
         Button,
         Node {
             width: Val::Px(CARD_W),
-            height: Val::Px(350.0),
+            height: Val::Px(400.0),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(38.0), Val::Px(10.0)),
@@ -400,8 +421,21 @@ fn spawn_card(
         UiTransform::default(),
     ))
     .with_children(|c| {
-        // The school's painting, faint, behind the top half.
-        if let Some((img, rect)) = look.painting(school) {
+        // The live scene of the hero casting it, over the top; or the school's painting, faint.
+        let scene = look.scene(i, card);
+        if let Some(img) = &scene {
+            c.spawn((
+                ImageNode::new(img.clone()),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Px(SCENE_H),
+                    ..default()
+                },
+            ));
+        } else if let Some((img, rect)) = look.painting(school) {
             c.spawn((
                 ImageNode {
                     image: img,
@@ -461,12 +495,18 @@ fn spawn_card(
             t.spawn((Text::new(card_tag(card)), font.text(12.0), TextColor(color)));
         });
 
-        // The icon in a frame that glows in the rarity colour.
+        // The icon in a frame that glows in the rarity colour (smaller, at the scene's foot, when
+        // there is one).
+        let (icon_size, icon_top) = if scene.is_some() {
+            (52.0, SCENE_H - 38.0 - 26.0)
+        } else {
+            (78.0, 0.0)
+        };
         c.spawn((
             Node {
-                width: Val::Px(78.0),
-                height: Val::Px(78.0),
-                margin: UiRect::bottom(Val::Px(10.0)),
+                width: Val::Px(icon_size),
+                height: Val::Px(icon_size),
+                margin: UiRect::new(Val::ZERO, Val::ZERO, Val::Px(icon_top), Val::Px(10.0)),
                 border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 justify_content: JustifyContent::Center,
@@ -599,7 +639,7 @@ fn hover_cards(
 fn pick_card(
     mut commands: Commands,
     mut screen: ResMut<CardScreen>,
-    mut clock: ResMut<Time<Virtual>>,
+    mut hold: ResMut<super::CardHold>,
     mut run: ResMut<Run>,
     mut health: ResMut<HeroHealth>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -633,7 +673,7 @@ fn pick_card(
     run.pending_cards = run.pending_cards.saturating_sub(1);
     commands.entity(*root).try_despawn();
     screen.open = None;
-    clock.unpause();
+    hold.0 = false;
 }
 
 #[cfg(test)]

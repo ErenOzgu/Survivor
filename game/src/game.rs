@@ -171,6 +171,7 @@ fn move_hero(
     streamer: Option<Res<TerrainStreamer>>,
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     cams: Query<&FollowCam>,
+    hold: Option<Res<crate::combat::CardHold>>,
     mut heroes: Query<(
         &mut Transform,
         &mut Hero,
@@ -181,7 +182,12 @@ fn move_hero(
         return;
     };
     let yaw = cams.single().map(|c| c.yaw).unwrap_or(0.0);
-    let dt = time.delta_secs();
+    // The level-up cards hold the hero where it stands (the clock runs on for the scenery).
+    let dt = if hold.is_some_and(|h| h.0) {
+        0.0
+    } else {
+        time.delta_secs()
+    };
     // Space jumps (from the ground); the body rises and falls back under gravity.
     if dt > 0.0 && hero.grounded && hero.air <= 0.0 && keys.just_pressed(KeyCode::Space) {
         hero.rise = motion::JUMP_SPEED;

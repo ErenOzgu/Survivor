@@ -13,6 +13,7 @@ pub mod boss_hud;
 pub mod boss_portrait;
 pub mod boss_rules;
 pub mod bosses;
+pub mod card_scene;
 pub mod cards;
 pub mod char_view;
 pub mod collide;
@@ -67,6 +68,7 @@ impl Plugin for CombatPlugin {
         app.insert_resource(Run::new(&debug))
             .insert_resource(debug)
             .insert_resource(CombatRng(Rng::new(seed)))
+            .init_resource::<CardHold>()
             .add_message::<HeroDied>()
             .add_message::<RestartRun>()
             .configure_sets(
@@ -81,6 +83,17 @@ impl Plugin for CombatPlugin {
                     .chain()
                     .after(WorldStage::Input)
                     .before(WorldStage::Stream),
+            )
+            // The card screen holds the fight, not the clock: models and effects play on.
+            .configure_sets(
+                Update,
+                (
+                    CombatSet::Spawn,
+                    CombatSet::Act,
+                    CombatSet::Resolve,
+                    CombatSet::Reset,
+                )
+                    .run_if(not_held),
             )
             .add_systems(
                 Update,
@@ -124,6 +137,7 @@ impl Plugin for CombatPlugin {
                 char_view::CharViewPlugin,
                 boss_portrait::BossPortraitPlugin,
                 crafting_ui::CraftingPlugin,
+                card_scene::CardScenePlugin,
             ));
     }
 }
@@ -251,6 +265,15 @@ pub fn parse_start_time(s: &str) -> Option<f32> {
         None => s.parse().ok()?,
     };
     (secs.is_finite() && (0.0..=3600.0).contains(&secs)).then_some(secs)
+}
+
+/// While the level-up cards are up the fight waits (spawns, moves, casts, deaths), but the
+/// world clock runs, so models, effects and the cards' live scenes keep playing.
+#[derive(Resource, Default, Debug)]
+pub struct CardHold(pub bool);
+
+pub fn not_held(hold: Res<CardHold>) -> bool {
+    !hold.0
 }
 
 /// The combat's random source.

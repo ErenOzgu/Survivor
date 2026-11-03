@@ -68,7 +68,9 @@ oynanabilir bir savaş döngüsü kurar:
 - **Seviye kartları:** koleksiyon kartı düzeninde: oval resmin önünde büyünün ikonu, köşede
   seviye taşı, isim şeridi, nadirlik taşı (beyaz yükseltme, mavi yeni skill, mor yeni pasif,
   turuncu evrim), parşömen üstünde açıklama, altta okul (Buz/Ateş/Arkan/Pasif/İksir). Üstüne
-  gelince büyür ve parlar. Oval resim ayar dosyasında `kart=` ile seçilir: `yukleme` (varsayılan;
+  gelince büyür ve parlar. Kartın resmi ayar dosyasında `kart=` ile seçilir: `sahne` (varsayılan: skill kartlarında
+  kahramanın o büyüyü atarken canlı görüntüsü; kahramanın bir kopyası dünyanın altında durur,
+  küçük bir kamera çeker; pasif ve iksir kartlarında yükleme ekranı resmi), `yukleme` (
   istemcinin yükleme ekranlarından, Buz'a Naxxramas, Ateş'e Molten Core, Arkan'a Dire Maul) ya
   da `agac` (büyücü yetenek ağacı resimleri). `RNS_CARD_ART` aynı işi görür.
 
@@ -98,6 +100,8 @@ oynanabilir bir savaş döngüsü kurar:
   eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
   (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
   Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Kart ekranı** oyunu artık dondurmaz, savaşı bekletir: düşmanlar, büyüler ve kahraman durur,
+  modeller ve efektler oynamaya devam eder (kartlardaki canlı sahneler için).
 - **Meslekler (P, ya da ana menüde 4):**
   - **Malzemeler** düşmanlardan düşer, hemen kayda girer: kobold bakır cevheri ve keten kumaş,
     kurt eti, örümcek bacağı, falcı keten ve garip toz; bosslar toz, bakır ve keten bırakır.
@@ -139,7 +143,7 @@ Ayar dosyasında (`%APPDATA%\Rnsurvivors\ayarlar.txt`):
 | `sarsinti` | `0`–`1` (varsayılan `1`) | Kamera sarsıntısı; `0` kapatır |
 | `saat` | `akis` (varsayılan), `gunduz`, `gece`, `18:30` | Günün saati |
 | `kamera` | `yakin`, `orta` (varsayılan), `uzak` | Kamera uzaklığı ve açısı |
-| `kart` | `yukleme` (varsayılan), `agac` | Seviye kartlarının resmi |
+| `kart` | `sahne` (varsayılan), `yukleme`, `agac` | Seviye kartlarının resmi |
 | `dokum` | `1` | Açılışta istemcideki bütün büyüleri (ad, numara, ikon, efekt modelleri) `rnsurvivors-buyuler.txt`'e yazar; efekt seçmek için |
 
 ### Düşmanlar
