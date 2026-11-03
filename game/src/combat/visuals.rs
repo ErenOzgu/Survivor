@@ -69,6 +69,17 @@ pub fn model_folder(kind: EnemyKind) -> Option<&'static str> {
     }
 }
 
+/// Words a kind's model path may hold, tried when its folder has no display.
+pub fn model_needles(kind: EnemyKind) -> &'static [&'static str] {
+    match kind {
+        EnemyKind::Spider => &["spider", "tarantula"],
+        EnemyKind::Wolf => &["wolf"],
+        EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => &["kobold"],
+        EnemyKind::GnollChief => &["gnoll"],
+        EnemyKind::DefiasBoss => &[],
+    }
+}
+
 /// Which skin of its model folder a kind wears (kinds sharing a folder look apart).
 pub fn skin_index(kind: EnemyKind) -> usize {
     match kind {
@@ -94,7 +105,17 @@ fn resolve_enemy_displays(mut assets: ResMut<Placeholders>, data: Option<Res<Mod
             continue;
         };
         // Kinds sharing a model folder take different skins of it.
-        let skins = models::creature_displays_in_folder(&data, folder);
+        let mut skins = models::creature_displays_in_folder(&data, folder);
+        if skins.is_empty() {
+            if let Some(found) = model_needles(kind)
+                .iter()
+                .map(|n| models::creature_displays_matching(&data, n))
+                .find(|v| !v.is_empty())
+            {
+                info!("rnsurvivors: nothing under {folder}, {kind:?} takes a model by name");
+                skins = found;
+            }
+        }
         let pick = (!skins.is_empty()).then(|| skins[skin_index(kind) % skins.len()]);
         match pick {
             Some(id) => {

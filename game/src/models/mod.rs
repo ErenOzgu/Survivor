@@ -60,6 +60,22 @@ pub fn creature_displays_in_folder(data: &ModelData, folder: &str) -> Vec<u32> {
     test_spawn::displays_by_folder(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), folder)
 }
 
+/// Creature displays with a skin whose model path holds `needle` (e.g. `spider`).
+pub fn creature_displays_matching(data: &ModelData, needle: &str) -> Vec<u32> {
+    let Some(tables) = data.tables.as_ref() else {
+        return Vec::new();
+    };
+    let rows: Vec<(u32, String, bool)> = tables
+        .creatures
+        .display_models()
+        .filter_map(|(id, _)| {
+            let m = tables.creatures.model(id)?;
+            Some((id, m.model_path, m.textures[0].is_some()))
+        })
+        .collect();
+    test_spawn::displays_matching(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), needle)
+}
+
 /// Rebuilds an entity's model for a new request (the hero's gear changed): the old model goes and
 /// the new one is built as for a fresh request.
 pub fn rebuild_model(

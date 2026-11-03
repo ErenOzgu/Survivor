@@ -194,18 +194,30 @@ fn dress_zones(mut commands: Commands, art: Res<WowArt>, new: Query<(Entity, &Zo
     }
 }
 
-/// XP orbs wear a small green missile model, up to a cap (the rest keep the plain sphere).
+/// XP orbs wear a small green missile model, up to a cap, nearest the hero first (the orb merge
+/// keeps their count under it; any past it keep the plain sphere until there is room).
+#[allow(clippy::type_complexity)]
 fn dress_orbs(
     mut commands: Commands,
     art: Res<WowArt>,
-    new: Query<Entity, Added<Orb>>,
+    heroes: Query<&Transform, With<crate::game::Hero>>,
+    bare: Query<(Entity, &Transform), (With<Orb>, Without<ModelRequest>)>,
     dressed: Query<(), (With<Orb>, With<ModelRequest>)>,
 ) {
     let Some(path) = art.orb_model.clone() else {
         return;
     };
     let room = MAX_ORB_MODELS.saturating_sub(dressed.iter().count());
-    for e in new.iter().take(room) {
+    if room == 0 || bare.is_empty() {
+        return;
+    }
+    let hero = heroes.single().map(|h| h.translation).unwrap_or(Vec3::ZERO);
+    let mut order: Vec<(Entity, f32)> = bare
+        .iter()
+        .map(|(e, xf)| (e, xf.translation.distance_squared(hero)))
+        .collect();
+    order.sort_by(|a, b| a.1.total_cmp(&b.1));
+    for (e, _) in order.into_iter().take(room) {
         commands.entity(e).insert(ModelRequest::Effect {
             path: path.clone(),
             scale: 0.5,
