@@ -33,6 +33,11 @@ impl CardScreen {
     pub fn is_open(&self) -> bool {
         self.open.is_some()
     }
+
+    /// The cards on the open screen.
+    pub fn cards(&self) -> Option<&[Card]> {
+        self.open.as_ref().map(|(_, c)| c.as_slice())
+    }
 }
 
 /// Which card a button is.
@@ -117,8 +122,9 @@ fn open_cards(
     font: Res<UiFont>,
     art: Res<WowArt>,
     pause: Res<super::pause::PauseMenu>,
+    main_menu: Res<super::menu::MainMenu>,
 ) {
-    if screen.is_open() || run.pending_cards == 0 || pause.is_open() {
+    if screen.is_open() || run.pending_cards == 0 || pause.is_open() || main_menu.is_open() {
         return;
     }
     let cards = rules::roll_cards(&run.loadout, &run.passives, &mut rng.0, CARDS);

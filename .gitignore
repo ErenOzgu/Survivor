@@ -13,4 +13,6 @@ WoW/
 .env
 *.log
 rnsurvivors-rapor.txt
+rnsurvivors-denge.csv
+rnsurvivors-kayit.txt
 __pycache__/

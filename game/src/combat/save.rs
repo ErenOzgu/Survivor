@@ -1,0 +1,256 @@
+//! What lasts between runs: records and totals, kept in a small text file in the player's
+//! profile (Windows: `%APPDATA%\Rnsurvivors\kayit.txt`; `RNS_SAVE` names another file).
+//! Talents and gear (phases 4–5) will be stored here too.
+
+use std::path::PathBuf;
+
+use bevy::prelude::*;
+
+use super::hero::{check_death, reset_run};
+use super::portal::MapCleared;
+use super::{CombatSet, HeroDied, RestartRun, Run};
+
+pub const SAVE_VAR: &str = "RNS_SAVE";
+
+pub struct SavePlugin;
+
+impl Plugin for SavePlugin {
+    fn build(&self, app: &mut App) {
+        let path = save_path();
+        let data = std::fs::read_to_string(&path)
+            .map(|t| SaveData::parse(&t))
+            .unwrap_or_default();
+        info!("rnsurvivors: save file {}", path.display());
+        app.insert_resource(Save { data, path }).add_systems(
+            Update,
+            // After a death is noticed, before the run resets: the finished run is still there.
+            record_run
+                .in_set(CombatSet::Reset)
+                .after(check_death)
+                .before(reset_run),
+        );
+    }
+}
+
+/// The save and where it lives.
+#[derive(Resource)]
+pub struct Save {
+    pub data: SaveData,
+    pub path: PathBuf,
+}
+
+/// Records and totals over every run.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SaveData {
+    pub runs: u32,
+    pub deaths: u32,
+    pub maps_cleared: u32,
+    pub total_kills: u64,
+    /// Longest run, seconds.
+    pub best_time: f32,
+    pub best_level: u32,
+    pub best_kills: u32,
+}
+
+/// How a run ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ending {
+    Died,
+    Cleared,
+    /// Restarted or left from the pause menu.
+    Abandoned,
+}
+
+impl SaveData {
+    /// One `key=value` per line.
+    pub fn to_text(&self) -> String {
+        format!(
+            "# Rnsurvivors kayıt dosyası\n\
+             runs={}\ndeaths={}\nmaps_cleared={}\ntotal_kills={}\n\
+             best_time={:.1}\nbest_level={}\nbest_kills={}\n",
+            self.runs,
+            self.deaths,
+            self.maps_cleared,
+            self.total_kills,
+            self.best_time,
+            self.best_level,
+            self.best_kills
+        )
+    }
+
+    /// Reads [`Self::to_text`]; unknown keys, comments and bad numbers are skipped, so an old or
+    /// hand-edited file still loads.
+    pub fn parse(text: &str) -> Self {
+        let mut d = SaveData::default();
+        for line in text.lines() {
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            let v = v.trim();
+            match k.trim() {
+                "runs" => d.runs = v.parse().unwrap_or(0),
+                "deaths" => d.deaths = v.parse().unwrap_or(0),
+                "maps_cleared" => d.maps_cleared = v.parse().unwrap_or(0),
+                "total_kills" => d.total_kills = v.parse().unwrap_or(0),
+                "best_time" => {
+                    d.best_time = v
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|t| t.is_finite())
+                        .unwrap_or(0.0)
+                }
+                "best_level" => d.best_level = v.parse().unwrap_or(0),
+                "best_kills" => d.best_kills = v.parse().unwrap_or(0),
+                _ => {}
+            }
+        }
+        d
+    }
+
+    /// Adds a finished run; returns whether it set a new best time.
+    pub fn record(&mut self, time: f32, level: u32, kills: u32, ending: Ending) -> bool {
+        self.runs += 1;
+        match ending {
+            Ending::Died => self.deaths += 1,
+            Ending::Cleared => self.maps_cleared += 1,
+            Ending::Abandoned => {}
+        }
+        self.total_kills += kills as u64;
+        self.best_level = self.best_level.max(level);
+        self.best_kills = self.best_kills.max(kills);
+        let new_best = time > self.best_time;
+        if new_best {
+            self.best_time = time;
+        }
+        new_best
+    }
+}
+
+/// Where the save lives: `RNS_SAVE`, else the platform's per-user data folder.
+pub fn save_path() -> PathBuf {
+    save_path_from(
+        std::env::var_os(SAVE_VAR),
+        std::env::var_os("APPDATA"),
+        std::env::var_os("XDG_DATA_HOME"),
+        std::env::var_os("HOME"),
+    )
+}
+
+fn save_path_from(
+    over: Option<std::ffi::OsString>,
+    appdata: Option<std::ffi::OsString>,
+    xdg: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> PathBuf {
+    if let Some(p) = over.filter(|p| !p.is_empty()) {
+        return PathBuf::from(p);
+    }
+    let dir = appdata
+        .map(|a| PathBuf::from(a).join("Rnsurvivors"))
+        .or_else(|| xdg.map(|x| PathBuf::from(x).join("rnsurvivors")))
+        .or_else(|| home.map(|h| PathBuf::from(h).join(".local/share/rnsurvivors")));
+    match dir {
+        Some(d) => d.join("kayit.txt"),
+        None => PathBuf::from("rnsurvivors-kayit.txt"),
+    }
+}
+
+fn record_run(
+    run: Res<Run>,
+    mut save: ResMut<Save>,
+    mut died: MessageReader<HeroDied>,
+    mut cleared: MessageReader<MapCleared>,
+    mut restarted: MessageReader<RestartRun>,
+) {
+    let ending = if died.read().count() > 0 {
+        Ending::Died
+    } else if cleared.read().count() > 0 {
+        Ending::Cleared
+    } else if restarted.read().count() > 0 {
+        Ending::Abandoned
+    } else {
+        return;
+    };
+    let best = save.data.record(run.time, run.level, run.kills, ending);
+    if best {
+        info!("rnsurvivors: new best time {:.0} s", run.time);
+    }
+    if let Some(dir) = save.path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Err(e) = std::fs::write(&save.path, save.data.to_text()) {
+        warn!(
+            "rnsurvivors: could not save to {} ({e})",
+            save.path.display()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips() {
+        let mut d = SaveData::default();
+        d.record(312.4, 14, 520, Ending::Died);
+        d.record(605.0, 22, 1400, Ending::Cleared);
+        let back = SaveData::parse(&d.to_text());
+        assert_eq!(back.runs, 2);
+        assert_eq!(back.deaths, 1);
+        assert_eq!(back.maps_cleared, 1);
+        assert_eq!(back.total_kills, 1920);
+        assert_eq!(back.best_level, 22);
+        assert_eq!(back.best_kills, 1400);
+        assert!((back.best_time - 605.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn records_only_go_up() {
+        let mut d = SaveData::default();
+        assert!(d.record(100.0, 5, 50, Ending::Abandoned));
+        assert!(!d.record(80.0, 3, 10, Ending::Died));
+        assert_eq!((d.best_level, d.best_kills), (5, 50));
+        assert!((d.best_time - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bad_files_still_load() {
+        let d = SaveData::parse("garbage\nruns=x\nbest_level=7\nbest_time=NaN\nfuture_key=1\n");
+        assert_eq!(d.best_level, 7);
+        assert_eq!(d.runs, 0);
+        assert_eq!(d.best_time, 0.0);
+    }
+
+    #[test]
+    fn save_lands_in_the_profile() {
+        use std::ffi::OsString;
+        let p = save_path_from(
+            None,
+            Some(OsString::from("C:/Users/U/AppData/Roaming")),
+            None,
+            None,
+        );
+        assert!(p.ends_with("Rnsurvivors/kayit.txt"));
+        let p = save_path_from(
+            Some(OsString::from("x.txt")),
+            Some(OsString::from("A")),
+            None,
+            None,
+        );
+        assert_eq!(p, PathBuf::from("x.txt"));
+        let p = save_path_from(None, None, None, Some(OsString::from("/home/u")));
+        assert!(p.ends_with(".local/share/rnsurvivors/kayit.txt"));
+        assert_eq!(
+            save_path_from(None, None, None, None),
+            PathBuf::from("rnsurvivors-kayit.txt")
+        );
+    }
+
+    #[test]
+    fn system_params() {
+        use bevy::ecs::system::IntoSystem;
+        let mut world = World::new();
+        IntoSystem::into_system(record_run).initialize(&mut world);
+    }
+}

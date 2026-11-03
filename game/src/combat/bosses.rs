@@ -18,7 +18,7 @@ use super::portal::{spawn_chest_and_portal, Chest, MapCleared, Portal};
 use super::rules::{self, flat_dist};
 use super::visuals::{attach_enemy_visual, spawn_flash, Placeholders};
 use super::xp::spawn_orb;
-use super::{hero_on_ground, CombatRng, CombatSet, DebugStart, HeroDied, Run};
+use super::{hero_on_ground, CombatRng, CombatSet, DebugStart, HeroDied, RestartRun, Run};
 use crate::content::bosses::{Arrival, AttackShape, BossDef, Rank, ELWYNN_BOSSES};
 use crate::content::waves::{self, SPAWN_RING_MIN};
 use crate::content::SkillId;
@@ -669,13 +669,14 @@ fn reset_bosses(
     mut commands: Commands,
     mut died: MessageReader<HeroDied>,
     mut cleared: MessageReader<MapCleared>,
+    mut restarted: MessageReader<RestartRun>,
     debug: Res<DebugStart>,
     mut state: ResMut<BossRun>,
     mut notice: ResMut<BossNotice>,
     stuff: Query<Entity, Or<(With<Boss>, With<Telegraph>, With<Chest>, With<Portal>)>>,
 ) {
     let died = died.read().count() > 0;
-    let cleared = cleared.read().count() > 0;
+    let cleared = cleared.read().count() > 0 || restarted.read().count() > 0;
     if !died && !cleared {
         return;
     }

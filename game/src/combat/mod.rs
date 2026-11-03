@@ -7,6 +7,7 @@
 //! is open the virtual clock is paused, so every system below sees `dt = 0`.
 
 pub mod art;
+pub mod autopilot;
 pub mod boss_hud;
 pub mod boss_rules;
 pub mod bosses;
@@ -15,11 +16,13 @@ pub mod enemies;
 pub mod flat;
 pub mod hero;
 pub mod hud;
+pub mod menu;
 pub mod numbers;
 pub mod pause;
 pub mod plates;
 pub mod portal;
 pub mod rules;
+pub mod save;
 pub mod skills;
 pub mod visuals;
 pub mod xp;
@@ -52,6 +55,7 @@ impl Plugin for CombatPlugin {
             .insert_resource(debug)
             .insert_resource(CombatRng(Rng::new(seed)))
             .add_message::<HeroDied>()
+            .add_message::<RestartRun>()
             .configure_sets(
                 Update,
                 (
@@ -86,7 +90,13 @@ impl Plugin for CombatPlugin {
                 boss_hud::BossHudPlugin,
                 portal::PortalPlugin,
             ))
-            .add_plugins((numbers::NumbersPlugin, pause::PausePlugin));
+            .add_plugins((
+                numbers::NumbersPlugin,
+                pause::PausePlugin,
+                save::SavePlugin,
+                menu::MenuPlugin,
+                autopilot::AutopilotPlugin,
+            ));
     }
 }
 
@@ -206,6 +216,13 @@ pub fn parse_start_time(s: &str) -> Option<f32> {
 /// The combat's random source.
 #[derive(Resource)]
 pub struct CombatRng(pub Rng);
+
+/// Sent to start the map over without a death (pause menu): the run resets on it, and
+/// `to_menu` brings the main menu up.
+#[derive(Message, Debug, Clone, Copy)]
+pub struct RestartRun {
+    pub to_menu: bool,
+}
 
 /// Sent when the hero's health reaches zero; the run resets on it.
 #[derive(Message, Debug, Clone, Copy)]

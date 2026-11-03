@@ -10,7 +10,7 @@ use super::rules::{self, HERO_MAX_HEALTH, HERO_REGEN};
 use super::skills::{Projectile, SkillTimers, Zone};
 use super::visuals::Flash;
 use super::xp::Orb;
-use super::{hero_on_ground, CombatSet, DebugStart, HeroDied, Run};
+use super::{hero_on_ground, CombatSet, DebugStart, HeroDied, RestartRun, Run};
 use crate::game::{Hero, HeroSpeed, Start};
 
 pub struct HeroPlugin;
@@ -124,7 +124,7 @@ fn contact_damage(
     health.current = h;
 }
 
-fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
+pub(super) fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
     if health.current <= 0.0 {
         died.write(HeroDied);
     }
@@ -134,10 +134,11 @@ fn check_death(health: Res<HeroHealth>, mut died: MessageWriter<HeroDied>) {
 /// enemy, projectile, area and orb cleared. Leaving through the portal (`MapCleared`) does the
 /// same without the death banner (the portal shows its own summary).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn reset_run(
+pub(super) fn reset_run(
     mut commands: Commands,
     mut died: MessageReader<HeroDied>,
     mut cleared: MessageReader<MapCleared>,
+    mut restarted: MessageReader<RestartRun>,
     start: Res<Start>,
     debug: Res<DebugStart>,
     mut run: ResMut<Run>,
@@ -159,7 +160,7 @@ fn reset_run(
     >,
 ) {
     let died = died.read().count() > 0;
-    let cleared = cleared.read().count() > 0;
+    let cleared = cleared.read().count() > 0 || restarted.read().count() > 0;
     if !died && !cleared {
         return;
     }

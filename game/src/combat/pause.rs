@@ -1,5 +1,5 @@
 //! The pause menu (Esc): the game stops and shows the run so far (skills, passives, what the
-//! passives add up to) with three choices: go on, start the map over, quit.
+//! passives add up to) with four choices: go on, start the map over, main menu, quit.
 
 use bevy::app::AppExit;
 use bevy::prelude::*;
@@ -7,9 +7,9 @@ use bevy::prelude::*;
 use super::art::{WowArt, DIALOG_BACKGROUND};
 use super::cards::CardScreen;
 use super::hud::{clock, UiFont};
-use super::portal::{ClearScreen, MapCleared};
+use super::portal::ClearScreen;
 use super::rules::{Stats, BASE_CRIT};
-use super::{skill_label, CombatSet, Run};
+use super::{skill_label, CombatSet, RestartRun, Run};
 
 pub struct PausePlugin;
 
@@ -37,13 +37,15 @@ impl PauseMenu {
 enum Choice {
     Resume,
     Restart,
+    MainMenu,
     Quit,
 }
 
-const CHOICES: [(Choice, &str); 3] = [
+const CHOICES: [(Choice, &str); 4] = [
     (Choice::Resume, "1  Devam et  (Esc)"),
     (Choice::Restart, "2  Haritayı baştan başlat"),
-    (Choice::Quit, "3  Oyundan çık"),
+    (Choice::MainMenu, "3  Ana menüye dön"),
+    (Choice::Quit, "4  Oyundan çık"),
 ];
 
 /// What the passives add up to, one Turkish line per changed stat.
@@ -87,13 +89,14 @@ fn pause_menu(
     font: Res<UiFont>,
     art: Res<WowArt>,
     buttons: Query<(&Interaction, &Choice), Changed<Interaction>>,
-    mut cleared: MessageWriter<MapCleared>,
+    main_menu: Res<super::menu::MainMenu>,
+    mut restart: MessageWriter<RestartRun>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let esc = keys.just_pressed(KeyCode::Escape);
     let Some(root) = menu.open else {
         // Another screen already holds the pause.
-        if esc && !cards.is_open() && !clear.is_open() {
+        if esc && !cards.is_open() && !clear.is_open() && !main_menu.is_open() {
             clock_v.pause();
             menu.open = Some(spawn_menu(&mut commands, &run, &font, &art));
         }
@@ -104,6 +107,8 @@ fn pause_menu(
     } else if keys.any_just_pressed([KeyCode::Digit2, KeyCode::Numpad2]) {
         Some(Choice::Restart)
     } else if keys.any_just_pressed([KeyCode::Digit3, KeyCode::Numpad3]) {
+        Some(Choice::MainMenu)
+    } else if keys.any_just_pressed([KeyCode::Digit4, KeyCode::Numpad4]) {
         Some(Choice::Quit)
     } else {
         None
@@ -122,7 +127,10 @@ fn pause_menu(
         Choice::Resume => {}
         Choice::Restart => {
             info!("rnsurvivors: map restarted from the pause menu");
-            cleared.write(MapCleared);
+            restart.write(RestartRun { to_menu: false });
+        }
+        Choice::MainMenu => {
+            restart.write(RestartRun { to_menu: true });
         }
         Choice::Quit => {
             exit.write(AppExit::Success);

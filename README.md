@@ -260,6 +260,13 @@ numarası, ikonu, efekt modellerinin yolları (füze, cast, impact…), pasif ik
 dokularının bulunup bulunmadığı. Sadece numara ve dosya yolu içerir, WoW verisinin kendisini
 değil; git'e girmez. Bir sorun olursa bu dosyayı paylaşmak yeterli.
 
+### Ana menü ve kayıt
+
+Oyun ana menüyle açılır: rekorlar (en uzun koşu, en yüksek level, bir koşuda en çok düşman) ve
+toplamlar (koşu, ölüm, tamamlanan harita). Her koşu bitince (ölüm, portal, menüden baştan
+başlatma) kayıt güncellenir. Kayıt dosyası Windows'ta `%APPDATA%\Rnsurvivors\kayit.txt`;
+düz metin, silinirse rekorlar sıfırlanır. Esc menüsünden ana menüye dönülebilir.
+
 ### Kontroller
 
 | Tuş | İş |
@@ -291,6 +298,11 @@ kürelerini toplamak.
 | `RNS_FLAT` | `1` | Test: arazi yüklenmeyen yerde kahraman düz bir zeminde durur (yeşil zemin + taşlar çizilir). WoW verisi **olmadan** savaşı denemek için |
 | `RNS_FONT` | `C:\Windows\Fonts\arial.ttf` | Test: arayüz yazıları için WoW'unki yerine bu font dosyası (WoW verisi yokken yazılar görünsün diye) |
 | `RNS_TIME` | `590` veya `9:50` | Test: koşu saati buradan başlar (saniye ya da `dk:sn`, en fazla 1 saat). Bu andan önceki mini boss'lar atlanır; `590` ile uyarı 2 sn sonra başlar, boss 10 sn sonra (10:00'da) gelir. Dalgalar da o saatin zorluğundadır, `RNS_GOD`, `RNS_LEVEL`, `RNS_SKILLS` ile birlikte kullan. Ölünce ya da portaldan sonra yine bu saatten başlanır |
+| `RNS_NOMENU` | `1` | Açılışta ana menüyü atla |
+| `RNS_SAVE` | `D:\\kayit.txt` | Kayıt dosyası (varsayılan Windows'ta `%APPDATA%\\Rnsurvivors\\kayit.txt`) |
+| `RNS_AUTOPLAY` | `1` | Test: oyun kendi kendine oynar (kaçar, küre toplar, kart seçer) ve her 15 sn'de `rnsurvivors-denge.csv`'ye bir satır yazar; denge ölçümü için |
+| `RNS_SPEEDUP` | `2` | `RNS_AUTOPLAY` ile: oyun saati bu kat hızlı akar |
+| `RNS_BALANCE_LOG` | `denge.csv` | `RNS_AUTOPLAY`'in yazdığı dosya |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
