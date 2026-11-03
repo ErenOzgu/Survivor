@@ -199,7 +199,7 @@ const BAR_PIECES: [[f32; 4]; 2] = [
     [0.0, 139.0 / 256.0, 1.0, 192.0 / 256.0],
 ];
 /// The mage's square in the character-creation class icons.
-const MAGE_ICON: [f32; 4] = [0.25, 0.0, 0.49609375, 0.25];
+pub const MAGE_ICON: [f32; 4] = [0.25, 0.0, 0.49609375, 0.25];
 /// The player frame: the target frame mirrored, as the client draws it.
 const PLAYER_FRAME: [f32; 4] = [0.09375, 0.0, 1.0, 0.78125];
 
@@ -746,7 +746,7 @@ fn apply_skins(
     art: Res<WowArt>,
     images: Res<Assets<Image>>,
     skins: Query<(Entity, &WowSkin), Without<ImageNode>>,
-    mut fallbacks: Query<(&Fallback, &mut Visibility)>,
+    mut fallbacks: Query<(Ref<Fallback>, &mut Visibility)>,
 ) {
     for (e, skin) in &skins {
         let Some(tex) = art.ui(skin.path) else {
@@ -765,8 +765,9 @@ fn apply_skins(
             BackgroundColor(Color::NONE),
         ));
     }
-    if art.is_changed() {
-        for (f, mut vis) in &mut fallbacks {
+    for (f, mut vis) in &mut fallbacks {
+        // When the art arrives, or a window with stand-ins opens.
+        if art.is_changed() || f.is_added() {
             *vis = if art.ui(f.0).is_some() {
                 Visibility::Hidden
             } else {

@@ -93,6 +93,10 @@ oynanabilir bir savaş döngüsü kurar:
   - **X, Ice Barrier** (savunma, 5 dk): 20 sn en yüksek canının %60'ı kadar hasarı kalkan emer.
   - **C, Arcane Power** (saldırı, 5 dk): 15 sn büyüler %50 fazla vurur.
   Dolarken yuva kararır ve geri sayar, çalışırken altın çerçeve alır, harcanınca griye döner.
+- **Karakter penceresi (I):** WoW'un kendi karakter penceresi (dokuları istemciden): solda ve
+  sağda eşya yuvaları (oyunun 6 yuvası dolu, yüzük/kolye/pelerin gibi diğerleri ileride için soluk),
+  ortada karakterin canlı görüntüsü (pencere açıkken önünde duran küçük bir kamerayla), altında iki
+  istatistik kutusu; yanında çanta ve seçilen eşyanın kartı.
 - **Düşman can barları** WoW 1.12 nameplate'i: istemcinin `Nameplate-Border` çerçevesi, içinde
   kırmızı can barı, üstünde adı, sağdaki yuvada seviye. Hasar alan düşmanda görünür.
 - **Çökme kaydı:** oyun çökerse hata `%APPDATA%\Rnsurvivors\rnsurvivors-cokme.txt`'e yazılır;

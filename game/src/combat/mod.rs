@@ -13,6 +13,7 @@ pub mod boss_hud;
 pub mod boss_rules;
 pub mod bosses;
 pub mod cards;
+pub mod char_view;
 pub mod collide;
 pub mod enemies;
 pub mod flat;
@@ -115,8 +116,8 @@ impl Plugin for CombatPlugin {
                 world_look::WorldLookPlugin,
                 screen_fx::ScreenFxPlugin,
                 minimap::MinimapPlugin,
-                abilities::AbilitiesPlugin,
-            ));
+            ))
+            .add_plugins((abilities::AbilitiesPlugin, char_view::CharViewPlugin));
     }
 }
 

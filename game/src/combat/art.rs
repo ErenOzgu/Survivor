@@ -40,7 +40,33 @@ pub const MAIN_BAR: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf";
 pub const END_CAP: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf";
 pub const MINIMAP_BORDER: &str = "Interface\\Minimap\\UI-Minimap-Border";
 pub const BOSS_SKULL: &str = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull";
-/// Every interface texture loaded at start.
+/// The character window: its four frame pieces, its close button, and the empty slots' pictures.
+pub const PAPERDOLL: [&str; 4] = [
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-TopLeft",
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-TopRight",
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-BottomLeft",
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-BottomRight",
+];
+pub const CLOSE_BUTTON: &str = "Interface\\Buttons\\UI-Panel-MinimizeButton-Up";
+pub const SLOT_PICTURES: [&str; 16] = [
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Head",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Neck",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Shoulder",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Chest",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Shirt",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Tabard",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Wrists",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Hands",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Waist",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Legs",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Feet",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Finger",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Trinket",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-MainHand",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-SecondaryHand",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Ranged",
+];
+/// Every interface texture loaded at start (beside the character window's).
 pub const UI_TEXTURES: [&str; 14] = [
     STATUS_BAR,
     PLATE_BORDER,
@@ -304,7 +330,13 @@ fn load_art(
         info!("rnsurvivors: no WoW data, plain UI");
         return;
     };
-    for path in UI_TEXTURES {
+    for path in UI_TEXTURES
+        .iter()
+        .chain(PAPERDOLL.iter())
+        .chain(SLOT_PICTURES.iter())
+        .chain(std::iter::once(&CLOSE_BUTTON))
+    {
+        let path = *path;
         match wa.sprite_texture(path, &mut images) {
             Some(h) => {
                 art.ui.insert(path, h);
@@ -595,7 +627,12 @@ fn write_report(art: &WowArt) {
         let _ = writeln!(out, "[{}] {:?}: {ok}", d.name, d.icon_spell);
     }
     let _ = writeln!(out, "\n== Arayüz dokuları ==");
-    for path in UI_TEXTURES {
+    for path in UI_TEXTURES
+        .iter()
+        .chain(PAPERDOLL.iter())
+        .chain(SLOT_PICTURES.iter())
+        .chain(std::iter::once(&CLOSE_BUTTON))
+    {
         let ok = if art.ui.contains_key(path) {
             "var"
         } else {
