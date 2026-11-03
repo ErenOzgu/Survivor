@@ -62,8 +62,10 @@ impl Plugin for AutopilotPlugin {
         .add_systems(PreUpdate, drive.after(InputSystems))
         .add_systems(
             Update,
+            // The death is seen the frame it happens, before the run resets.
             log_run
                 .in_set(super::CombatSet::Reset)
+                .after(super::hero::check_death)
                 .before(super::hero::reset_run),
         );
     }
