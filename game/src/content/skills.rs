@@ -186,8 +186,8 @@ const B: SkillLevel = SkillLevel::BASE;
 // Frostbolt: the starting skill. A fast bolt at the nearest enemy that slows it; more bolts, then
 // bolts that pass through.
 const FB: SkillLevel = SkillLevel {
-    damage: 11.0,
-    cooldown: 1.15,
+    damage: 18.0,
+    cooldown: 0.95,
     duration: 1.6,
     slow: 0.35,
     range: 18.0,
@@ -200,36 +200,36 @@ pub static FROSTBOLT: SkillDef = SkillDef {
     desc: "En yakın düşmana buz oku atar ve onu yavaşlatır.",
     level_text: &[
         "En yakın düşmana buz oku atar ve onu yavaşlatır.",
-        "+1 ok, hasar 14.",
-        "Oklar 1 düşmanı delip geçer, hasar 17.",
-        "+1 ok (toplam 3), bekleme 1,0 sn.",
-        "Oklar 3 düşmanı delip geçer, hasar 24, yavaşlatma %50.",
+        "+1 ok, hasar 22.",
+        "Oklar 1 düşmanı delip geçer, hasar 26.",
+        "+1 ok (toplam 3), bekleme 0,85 sn.",
+        "Oklar 3 düşmanı delip geçer, hasar 34, yavaşlatma %50.",
     ],
     levels: &[
         FB,
         SkillLevel {
-            damage: 14.0,
+            damage: 22.0,
             count: 2,
             ..FB
         },
         SkillLevel {
-            damage: 17.0,
+            damage: 26.0,
             count: 2,
             pierce: 1,
             ..FB
         },
         SkillLevel {
-            damage: 17.0,
+            damage: 26.0,
             count: 3,
             pierce: 1,
-            cooldown: 1.0,
+            cooldown: 0.85,
             ..FB
         },
         SkillLevel {
-            damage: 24.0,
+            damage: 34.0,
             count: 3,
             pierce: 3,
-            cooldown: 1.0,
+            cooldown: 0.85,
             slow: 0.5,
             ..FB
         },

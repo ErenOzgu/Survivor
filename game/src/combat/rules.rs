@@ -16,7 +16,7 @@ pub const CARDS: usize = 3;
 /// Health a "can iksiri" card gives back, when there is nothing left to learn.
 pub const HEAL_CARD: f32 = 40.0;
 /// Orbs within this distance fly to the hero; within [`ORB_COLLECT`] they are taken.
-pub const ORB_MAGNET: f32 = 4.5;
+pub const ORB_MAGNET: f32 = 6.5;
 pub const ORB_COLLECT: f32 = 0.9;
 pub const ORB_SPEED: f32 = 15.0;
 

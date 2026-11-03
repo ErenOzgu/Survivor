@@ -37,7 +37,7 @@ pub fn wave_at(t: f32) -> WaveParams {
     let t = t.max(0.0);
     let ramp = |start: f32, over: f32| ((t - start) / over).clamp(0.0, 1.0);
     WaveParams {
-        interval: (1.2 * 0.93f32.powf(t / 20.0)).max(0.25),
+        interval: (1.6 * 0.92f32.powf(t / 20.0)).max(0.25),
         group: 1 + (t / 75.0) as u32,
         max_alive: (50.0 + t / 4.0).min(220.0) as u32,
         health_mul: 1.0 + t / 200.0,
