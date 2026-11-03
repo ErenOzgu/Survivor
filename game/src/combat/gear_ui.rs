@@ -377,7 +377,7 @@ fn loot_screen(
 pub struct IconCache(HashMap<(ItemSlot, u32), Option<Handle<Image>>>);
 
 impl IconCache {
-    fn get(
+    pub(super) fn get(
         &mut self,
         it: &Item,
         data: Option<&ModelData>,

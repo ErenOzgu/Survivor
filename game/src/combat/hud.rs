@@ -54,6 +54,20 @@ impl UiFont {
 /// testing without WoW data.
 pub const FONT_VAR: &str = "RNS_FONT";
 
+/// The title font: WoW's own Morpheus, from the player's Data (the UI font stands in without it).
+#[derive(Resource, Clone)]
+pub struct TitleFont(pub Handle<Font>);
+
+impl TitleFont {
+    pub fn text(&self, size: f32) -> TextFont {
+        TextFont {
+            font: self.0.clone(),
+            font_size: size,
+            ..default()
+        }
+    }
+}
+
 fn load_font(mut commands: Commands, server: Res<AssetServer>, mut fonts: ResMut<Assets<Font>>) {
     if let Ok(path) = std::env::var(FONT_VAR) {
         match std::fs::read(&path)
@@ -61,13 +75,16 @@ fn load_font(mut commands: Commands, server: Res<AssetServer>, mut fonts: ResMut
             .and_then(|b| Font::try_from_bytes(b).map_err(|e| e.to_string()))
         {
             Ok(font) => {
-                commands.insert_resource(UiFont(fonts.add(font)));
+                let h = fonts.add(font);
+                commands.insert_resource(TitleFont(h.clone()));
+                commands.insert_resource(UiFont(h));
                 return;
             }
             Err(e) => warn!("rnsurvivors: {FONT_VAR}={path:?} unusable ({e}), using WoW's font"),
         }
     }
     commands.insert_resource(UiFont(server.load("mpq://fonts/arialn.ttf")));
+    commands.insert_resource(TitleFont(server.load("mpq://fonts/morpheus.ttf")));
 }
 
 /// The UI draws on the follow camera (the engine may add cameras of its own).

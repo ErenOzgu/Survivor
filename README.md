@@ -93,6 +93,11 @@ oynanabilir bir savaş döngüsü kurar:
   - **X, Ice Barrier** (savunma, 5 dk): 20 sn en yüksek canının %60'ı kadar hasarı kalkan emer.
   - **C, Arcane Power** (saldırı, 5 dk): 15 sn büyüler %50 fazla vurur.
   Dolarken yuva kararır ve geri sayar, çalışırken altın çerçeve alır, harcanınca griye döner.
+- **Ana menü:** üstte WoW'un başlık yazı tipiyle (Morpheus, istemciden) "Rnsurvivors"; üç panel:
+  sınıf (Büyücü, diğer sınıflar ileride için soluk; büyü havuzu), karakter (canlı görüntü, giyilen
+  eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
+  (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
+  Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
 - **Karakter penceresi (I):** WoW'un kendi karakter penceresi (dokuları istemciden): solda ve
   sağda eşya yuvaları (oyunun 6 yuvası dolu, yüzük/kolye/pelerin gibi diğerleri ileride için soluk),
   ortada karakterin canlı görüntüsü (pencere açıkken önünde duran küçük bir kamerayla), altında iki

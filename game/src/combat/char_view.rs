@@ -1,4 +1,4 @@
-//! The character window's live figure: while the window is open a small camera stands in front
+//! The character window's (and main menu's) live figure: while one is open a small camera stands in front
 //! of the hero and films it into an image the window shows (the engine supports such off-screen
 //! cameras; they are not the world camera).
 
@@ -65,6 +65,7 @@ pub fn view_from(feet: Vec3, yaw: f32) -> Transform {
 fn film_hero(
     mut commands: Commands,
     inv: Res<Inventory>,
+    menu: Res<super::menu::MainMenu>,
     view: Option<ResMut<CharView>>,
     heroes: Query<&Transform, (With<Hero>, Without<FilmCam>)>,
     mut cams: Query<&mut Transform, With<FilmCam>>,
@@ -73,7 +74,8 @@ fn film_hero(
         return;
     };
     let hero = heroes.single().ok();
-    match (inv.is_open(), view.cam, hero) {
+    // The character window and the main menu show the figure.
+    match (inv.is_open() || menu.is_open(), view.cam, hero) {
         (true, None, Some(h)) => {
             let (yaw, _, _) = h.rotation.to_euler(EulerRot::YXZ);
             let cam = commands
