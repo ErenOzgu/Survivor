@@ -72,7 +72,7 @@ fn load_talent_icons(
         let name = t.def().icon_spell;
         let rows = catalog
             .iter()
-            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref()));
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
         let icon = pick_spell(rows, name)
             .and_then(|sid| catalog.get(sid))
             .and_then(|d| d.icon.as_deref())

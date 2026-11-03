@@ -73,26 +73,28 @@ impl WowArt {
     }
 }
 
-/// The spell a skill is drawn as, from `(id, name, rank)` rows: the lowest id named `name` at
-/// "Rank 1" (the player's spell), else the lowest unranked one.
+/// The spell a skill is drawn as, from `(id, name, rank, icon)` rows: among the rows named
+/// `name`, the player's own spell first — a real icon before a placeholder (`Temp`: the client's
+/// trainer and test rows), then "Rank 1" before unranked, then the lowest id.
 pub fn pick_spell<'a>(
-    rows: impl Iterator<Item = (u32, &'a str, Option<&'a str>)>,
+    rows: impl Iterator<Item = (u32, &'a str, Option<&'a str>, Option<&'a str>)>,
     name: &str,
 ) -> Option<u32> {
-    let mut rank_one = None::<u32>;
-    let mut unranked = None::<u32>;
-    for (id, n, r) in rows {
-        if !n.eq_ignore_ascii_case(name) {
-            continue;
-        }
-        let slot = match r {
-            Some("Rank 1") => &mut rank_one,
-            None | Some("") => &mut unranked,
-            _ => continue,
-        };
-        *slot = Some(slot.map_or(id, |s| s.min(id)));
-    }
-    rank_one.or(unranked)
+    rows.filter(|(_, n, _, _)| n.eq_ignore_ascii_case(name))
+        .filter_map(|(id, _, rank, icon)| {
+            let rank_class = match rank {
+                Some("Rank 1") => 0,
+                None | Some("") => 1,
+                _ => return None,
+            };
+            let placeholder = icon.is_none_or(|i| {
+                let i = i.to_ascii_lowercase();
+                i.ends_with("\\temp") || i == "temp"
+            });
+            Some(((placeholder, rank_class, id), id))
+        })
+        .min_by_key(|(key, _)| *key)
+        .map(|(_, id)| id)
 }
 
 fn load_art(
@@ -133,7 +135,7 @@ fn load_art(
         let name = id.def().icon_spell;
         let rows = catalog
             .iter()
-            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref()));
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
         let Some(spell_id) = pick_spell(rows, name) else {
             warn!("rnsurvivors: no spell named {name:?} in Spell.dbc");
             continue;
@@ -161,7 +163,7 @@ fn load_art(
         let name = p.def().icon_spell;
         let rows = catalog
             .iter()
-            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref()));
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
         let icon = pick_spell(rows, name)
             .and_then(|sid| catalog.get(sid))
             .and_then(|d| d.icon.as_deref())
@@ -348,26 +350,65 @@ mod tests {
 
     #[test]
     fn rank_one_lowest_id_wins() {
+        let icon = Some("Interface\\Icons\\Spell_Frost_FrostBolt02");
         let rows = [
-            (205, "Frostbolt", Some("Rank 2")),
-            (116, "Frostbolt", Some("Rank 1")),
-            (9999, "Frostbolt", Some("Rank 1")),
-            (5, "Fireball", Some("Rank 1")),
-            (30, "frostbolt", None),
+            (205, "Frostbolt", Some("Rank 2"), icon),
+            (116, "Frostbolt", Some("Rank 1"), icon),
+            (9999, "Frostbolt", Some("Rank 1"), icon),
+            (5, "Fireball", Some("Rank 1"), icon),
+            (30, "frostbolt", None, icon),
         ];
         assert_eq!(
             pick_spell(rows.into_iter(), "Frostbolt"),
             Some(116),
             "rank 1 beats unranked"
         );
-        let rows = [(30, "Blink", None), (1953, "Blink", Some(""))];
+        let rows = [(30, "Blink", None, icon), (1953, "Blink", Some(""), icon)];
         assert_eq!(pick_spell(rows.into_iter(), "Blink"), Some(30));
+        assert_eq!(pick_spell(rows.into_iter(), "Frostbolt"), None);
+    }
+
+    #[test]
+    fn trainer_rows_with_a_placeholder_icon_lose() {
+        // As in the 1.12 client: a "Rank 1" trainer row with the Temp icon below the real spell.
         let rows = [
-            (205, "Frostbolt", Some("Rank 2")),
-            (116, "Frostbolt", Some("Rank 1")),
+            (
+                846,
+                "Flamestrike",
+                Some("Rank 1"),
+                Some("Interface\\Icons\\Temp"),
+            ),
+            (
+                2120,
+                "Flamestrike",
+                Some("Rank 1"),
+                Some("Interface\\Icons\\Spell_Fire_SelfDestruct"),
+            ),
+            (517, "Blink", Some("Rank 1"), Some("Interface\\Icons\\Temp")),
+            (
+                1953,
+                "Blink",
+                None,
+                Some("Interface\\Icons\\Spell_Arcane_Blink"),
+            ),
         ];
-        assert_eq!(pick_spell(rows.into_iter(), "Frostbolt"), Some(116));
-        assert_eq!(pick_spell(rows.into_iter(), "Blink"), None);
+        assert_eq!(pick_spell(rows.into_iter(), "Flamestrike"), Some(2120));
+        assert_eq!(
+            pick_spell(rows.into_iter(), "Blink"),
+            Some(1953),
+            "a real icon beats the rank"
+        );
+        let only_temp = [(
+            846,
+            "Flamestrike",
+            Some("Rank 1"),
+            Some("Interface\\Icons\\Temp"),
+        )];
+        assert_eq!(
+            pick_spell(only_temp.into_iter(), "Flamestrike"),
+            Some(846),
+            "still a pick"
+        );
     }
 
     #[test]
