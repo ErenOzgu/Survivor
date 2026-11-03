@@ -63,15 +63,16 @@ impl Plugin for GearUiPlugin {
     }
 }
 
-/// The models' slot for an item slot.
-pub fn gear_slot(slot: ItemSlot) -> GearSlot {
+/// The models' slot for an item slot; jewellery and the back have none (an icon only).
+pub fn gear_slot(slot: ItemSlot) -> Option<GearSlot> {
     match slot {
-        ItemSlot::Head => GearSlot::Head,
-        ItemSlot::Chest => GearSlot::Chest,
-        ItemSlot::Hands => GearSlot::Hands,
-        ItemSlot::Legs => GearSlot::Legs,
-        ItemSlot::Feet => GearSlot::Feet,
-        ItemSlot::Weapon => GearSlot::MainHand,
+        ItemSlot::Head => Some(GearSlot::Head),
+        ItemSlot::Chest => Some(GearSlot::Chest),
+        ItemSlot::Hands => Some(GearSlot::Hands),
+        ItemSlot::Legs => Some(GearSlot::Legs),
+        ItemSlot::Feet => Some(GearSlot::Feet),
+        ItemSlot::Weapon => Some(GearSlot::MainHand),
+        ItemSlot::Neck | ItemSlot::Back | ItemSlot::Finger | ItemSlot::Trinket => None,
     }
 }
 
@@ -388,12 +389,23 @@ impl IconCache {
         if let Some(h) = self.0.get(&key) {
             return h.clone();
         }
-        let (data, wa) = (data?, wa?);
-        // The item tables may still be loading: nothing is remembered until they are in.
-        data.tables.as_ref()?.items.as_ref()?;
-        let handle = models::item_look(data, gear_slot(it.slot), it.look)
-            .and_then(|(_, icon)| icon)
-            .and_then(|path| wa.sprite_texture(&path, images));
+        let wa = wa?;
+        let handle = match gear_slot(it.slot) {
+            Some(gs) => {
+                let data = data?;
+                // The item tables may still be loading: nothing is remembered until they are in.
+                data.tables.as_ref()?.items.as_ref()?;
+                models::item_look(data, gs, it.look)
+                    .and_then(|(_, icon)| icon)
+                    .and_then(|path| wa.sprite_texture(&path, images))
+            }
+            None => {
+                let names = it.slot.icon_names();
+                names
+                    .get(it.look as usize % names.len().max(1))
+                    .and_then(|n| wa.sprite_texture(&models::icon_path(n), images))
+            }
+        };
         self.0.insert(key, handle.clone());
         handle
     }
@@ -663,9 +675,9 @@ fn cw_at(left: f32, top: f32, w: f32, h: f32) -> Node {
 pub fn doll_slots() -> Vec<(usize, Vec2, Option<ItemSlot>)> {
     let left: [(usize, Option<ItemSlot>); 8] = [
         (0, Some(ItemSlot::Head)),
-        (1, None),
+        (1, Some(ItemSlot::Neck)),
         (2, None),
-        (3, None), // back: the chest picture
+        (3, Some(ItemSlot::Back)), // back: the chest picture
         (3, Some(ItemSlot::Chest)),
         (4, None),
         (5, None),
@@ -676,9 +688,9 @@ pub fn doll_slots() -> Vec<(usize, Vec2, Option<ItemSlot>)> {
         (8, None),
         (9, Some(ItemSlot::Legs)),
         (10, Some(ItemSlot::Feet)),
+        (11, Some(ItemSlot::Finger)),
         (11, None),
-        (11, None),
-        (12, None),
+        (12, Some(ItemSlot::Trinket)),
         (12, None),
     ];
     let mut out = Vec::new();
@@ -1041,7 +1053,7 @@ fn dress_hero(
         .data
         .equipped
         .iter()
-        .map(|it| (gear_slot(it.slot), it.look))
+        .filter_map(|it| gear_slot(it.slot).map(|g| (g, it.look)))
         .collect();
     if worn_last.as_ref() == Some(&picks) {
         return;
@@ -1138,6 +1150,8 @@ mod tests {
             level: 1,
             affixes,
             look: 0,
+            forge: 0,
+            enchant: None,
         }
     }
 
@@ -1159,10 +1173,13 @@ mod tests {
     }
 
     #[test]
-    fn every_slot_maps_to_a_model_slot() {
+    fn every_slot_maps_to_a_model_slot_or_icons() {
         let mut seen = std::collections::HashSet::new();
         for s in ItemSlot::ALL {
-            assert!(seen.insert(gear_slot(s)));
+            match gear_slot(s) {
+                Some(g) => assert!(seen.insert(g)),
+                None => assert!(!s.icon_names().is_empty(), "{s:?}"),
+            }
         }
     }
 

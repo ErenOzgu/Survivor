@@ -290,6 +290,21 @@ impl Bonus {
         b
     }
 
+    /// One bonus, as an item's.
+    pub fn from_affix((a, v): (Affix, f32)) -> Bonus {
+        let mut b = Bonus::default();
+        match a {
+            Affix::Power => b.damage = v,
+            Affix::Haste => b.haste = v,
+            Affix::Speed => b.speed = v,
+            Affix::Health => b.health = v,
+            Affix::Magnet => b.magnet = v,
+            Affix::Crit => b.crit = v,
+            Affix::Wisdom => b.xp = v,
+        }
+        b
+    }
+
     /// What bought talents give.
     pub fn from_talents(t: &Talents) -> Bonus {
         use TalentEffect as E;
@@ -1007,6 +1022,8 @@ mod tests {
             level: 5,
             affixes: vec![(Affix::Power, 0.1), (Affix::Health, 12.0)],
             look: 0,
+            forge: 0,
+            enchant: None,
         };
         let mut t = Talents::default();
         t.buy(TalentId::IceShell, 9);

@@ -98,6 +98,18 @@ oynanabilir bir savaş döngüsü kurar:
   eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
   (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
   Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Meslekler (P, ya da ana menüde 4):**
+  - **Malzemeler** düşmanlardan düşer, hemen kayda girer: kobold bakır cevheri ve keten kumaş,
+    kurt eti, örümcek bacağı, falcı keten ve garip toz; bosslar toz, bakır ve keten bırakır.
+  - **Aşçılık:** Kurt Kebabı (+25 can), Örümcek Çorbası (+%10 koşu hızı), Avcı Yahnisi (+%10
+    büyü hasarı). Pişirilen yemeklerden biri "sonraki koşuya" seçilir, koşu başında yenir, buffı
+    o koşu boyunca sürer.
+  - **Demircilik:** giyilen eşya dövülür (+1'den +3'e), her seviye bonuslarını %15 güçlendirir;
+    her seviye daha çok bakır ve keten ister.
+  - **Enchant:** giyilen eşyaya bir enchant (Güç, Keskinlik, Dayanıklılık, Çeviklik, Bilgelik);
+    yenisi eskisinin yerine geçer.
+- **Takı yuvaları:** kolye, pelerin, yüzük ve tılsım da düşer ve giyilir (karakter penceresinde
+  yerlerinde; ikonları istemciden).
 - **Ölüm pasifleri** (seviye kartlarında):
   - **Patlayıcı Ölüm:** ölen düşman patlar, en yüksek canının %15'i (seviye başına) kadar
     hasarı 4 yarda içindekilere verir. Patlamanın öldürdükleri yeniden patlamaz.

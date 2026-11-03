@@ -575,9 +575,12 @@ fn dump_wanted() -> bool {
 
 /// One spell per name and look (its ranks share them), by name: id, rank, icon, and each
 /// visual stage's models.
+/// One dump row: name, spell id, rank, icon, visual.
+type DumpRow = (String, u32, Option<String>, Option<String>, u32);
+
 fn write_spell_dump(catalog: &SpellCatalog, visuals: &SpellVisualCatalog) {
     use std::fmt::Write as _;
-    let mut rows: Vec<(String, u32, Option<String>, Option<String>, u32)> = catalog
+    let mut rows: Vec<DumpRow> = catalog
         .iter()
         .filter(|(_, d)| d.visual != 0)
         .map(|(id, d)| (d.name.clone(), id, d.rank.clone(), d.icon.clone(), d.visual))

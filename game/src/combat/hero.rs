@@ -168,12 +168,31 @@ pub(super) fn check_death(
     died.write(HeroDied);
 }
 
-/// The talents' gifts at the start of a run: extra card picks.
-fn run_start_gifts(mut run: ResMut<Run>, save: Res<Save>) {
+/// The talents' gifts at the start of a run: extra card picks; and the meal picked for it is
+/// eaten (its buff lasts the run).
+fn run_start_gifts(
+    mut run: ResMut<Run>,
+    mut save: ResMut<Save>,
+    mut toasts: ResMut<super::gear_ui::Toasts>,
+) {
     if run.start_applied {
         return;
     }
     run.start_applied = true;
+    if let Some(f) = save.data.food_pick {
+        if save.data.foods[f.index()] > 0 {
+            save.data.foods[f.index()] -= 1;
+            save.data.active_food = Some(f);
+            toasts.push(
+                format!("{} yendi: {}", f.def().name, f.def().desc),
+                Color::srgb(1.0, 0.8, 0.4),
+            );
+            if save.data.foods[f.index()] == 0 {
+                save.data.food_pick = None;
+            }
+            save.write();
+        }
+    }
     let cards = save.data.talents.total(|e| match e {
         TalentEffect::StartCards(n) => Some(n as f32),
         _ => None,

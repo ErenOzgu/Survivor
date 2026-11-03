@@ -283,9 +283,10 @@ fn open_cards(
     (images, mut mode): (Res<Assets<Image>>, Local<Option<CardArt>>),
     pause: Res<super::pause::PauseMenu>,
     main_menu: Res<super::menu::MainMenu>,
-    (inv, loot): (
+    (inv, loot, craft): (
         Res<super::gear_ui::Inventory>,
         Res<super::gear_ui::LootScreen>,
+        Res<super::crafting_ui::CraftScreen>,
     ),
 ) {
     if screen.is_open()
@@ -294,6 +295,7 @@ fn open_cards(
         || main_menu.is_open()
         || inv.is_open()
         || loot.is_open()
+        || craft.is_open()
     {
         return;
     }

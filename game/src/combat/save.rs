@@ -10,6 +10,7 @@ use super::hero::{check_death, reset_run};
 use super::portal::MapCleared;
 use super::rules::Bonus;
 use super::{CombatSet, HeroDied, RestartRun, Run};
+use crate::content::crafting::{Food, Mat};
 use crate::content::items::{Item, ItemSlot};
 use crate::content::talents::{points_for_xp, Talents};
 
@@ -78,6 +79,14 @@ pub struct SaveData {
     pub equipped: Vec<Item>,
     /// Carried, not worn.
     pub bag: Vec<Item>,
+    /// Crafting materials, by `Mat::index`.
+    pub mats: [u32; 5],
+    /// Cooked meals, by `Food::index`.
+    pub foods: [u32; 3],
+    /// The meal to take into the next run.
+    pub food_pick: Option<Food>,
+    /// The meal eaten for the run under way (its buff counts; not saved).
+    pub active_food: Option<Food>,
 }
 
 /// How a run ended.
@@ -113,6 +122,34 @@ impl SaveData {
         for it in &self.bag {
             s.push_str(&format!("bag={}\n", it.to_save()));
         }
+        let counts = |keys: Vec<(&str, u32)>| {
+            keys.into_iter()
+                .filter(|(_, n)| *n > 0)
+                .map(|(k, n)| format!("{k}:{n}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        s.push_str(&format!(
+            "mats={}\n",
+            counts(
+                Mat::ALL
+                    .iter()
+                    .map(|m| (m.key(), self.mats[m.index()]))
+                    .collect()
+            )
+        ));
+        s.push_str(&format!(
+            "foods={}\n",
+            counts(
+                Food::ALL
+                    .iter()
+                    .map(|f| (f.key(), self.foods[f.index()]))
+                    .collect()
+            )
+        ));
+        if let Some(f) = self.food_pick {
+            s.push_str(&format!("food_pick={}\n", f.key()));
+        }
         s
     }
 
@@ -128,7 +165,11 @@ impl SaveData {
 
     /// What worn gear and talents add to the hero.
     pub fn bonus(&self) -> Bonus {
-        Bonus::from_gear(self.equipped.iter()).plus(Bonus::from_talents(&self.talents))
+        let mut b = Bonus::from_gear(self.equipped.iter()).plus(Bonus::from_talents(&self.talents));
+        if let Some(f) = self.active_food {
+            b = b.plus(Bonus::from_affix(f.def().buff));
+        }
+        b
     }
 
     pub fn worn(&self, slot: ItemSlot) -> Option<&Item> {
@@ -219,6 +260,20 @@ impl SaveData {
                         d.bag.push(it);
                     }
                 }
+                "mats" | "foods" => {
+                    for (key, n) in v
+                        .split(',')
+                        .filter_map(|p| p.split_once(':'))
+                        .filter_map(|(a, b)| Some((a.trim(), b.trim().parse::<u32>().ok()?)))
+                    {
+                        if let Some(m) = Mat::from_key(key) {
+                            d.mats[m.index()] = n;
+                        } else if let Some(f) = Food::from_key(key) {
+                            d.foods[f.index()] = n;
+                        }
+                    }
+                }
+                "food_pick" => d.food_pick = Food::from_key(v),
                 _ => {}
             }
         }
@@ -292,6 +347,8 @@ fn record_run(
         return;
     };
     let before = save.data.points();
+    // The meal's buff was for this run.
+    save.data.active_food = None;
     let best = save
         .data
         .record(run.time, run.level, run.kills, run.xp_total, ending);
@@ -308,6 +365,30 @@ fn record_run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crafting_round_trips() {
+        let mut d = SaveData::default();
+        d.mats[Mat::CopperOre.index()] = 7;
+        d.foods[Food::SpiderSoup.index()] = 2;
+        d.food_pick = Some(Food::SpiderSoup);
+        let mut it = crate::content::items::roll_item(
+            &mut crate::combat::rules::Rng::new(3),
+            crate::content::items::Source::Elite,
+            5,
+        );
+        it.forge = 2;
+        it.enchant = Some((crate::content::items::Affix::Crit, 0.04));
+        d.bag.push(it.clone());
+        let back = SaveData::parse(&d.to_text());
+        assert_eq!(back.mats, d.mats);
+        assert_eq!(back.foods, d.foods);
+        assert_eq!(back.food_pick, d.food_pick);
+        assert_eq!(back.bag[0].forge, 2);
+        assert_eq!(back.bag[0].enchant, it.enchant);
+        // The forge makes the bonuses stronger, the enchant adds one.
+        assert!(it.bonus(crate::content::items::Affix::Crit) >= 0.04);
+    }
 
     #[test]
     fn round_trips() {

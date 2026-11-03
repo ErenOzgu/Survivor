@@ -2,7 +2,8 @@
 //! streaming world. Three panels: the class (the Mage; the others locked for later) with its
 //! spells, the character (its live figure, what it wears, what gear and talents give, the
 //! records), and the zone (Elwynn Forest with its bosses' times; more to come); under them the
-//! big play button. 1/Enter plays, 2 opens the inventory, 3 the talents, 4 quits.
+//! big play button. 1/Enter plays, 2 opens the inventory, 3 the talents, 4 the professions,
+//! 5 quits.
 //! `RNS_NOMENU=1` (and the autopilot) skip it.
 
 use bevy::app::AppExit;
@@ -53,6 +54,7 @@ pub(super) enum MenuChoice {
     Play,
     Inventory,
     Talents,
+    Professions,
     Quit,
 }
 
@@ -87,6 +89,7 @@ pub(super) fn main_menu(
     mut inv: ResMut<super::gear_ui::Inventory>,
     mut talents: ResMut<super::talent_ui::TalentScreen>,
     mut look: MenuLook,
+    mut craft: ResMut<super::crafting_ui::CraftScreen>,
 ) {
     if restarted.read().any(|r| r.to_menu) {
         menu.pending = true;
@@ -108,7 +111,7 @@ pub(super) fn main_menu(
     };
     // A screen opened from here takes the keys until it closes; then the menu shows anew (the
     // records and points may have changed).
-    if inv.is_open() || talents.is_open() {
+    if inv.is_open() || talents.is_open() || craft.is_open() {
         menu.refresh = true;
         return;
     }
@@ -145,7 +148,9 @@ pub(super) fn main_menu(
         Some(MenuChoice::Inventory)
     } else if keys.any_just_pressed([KeyCode::Digit3, KeyCode::Numpad3, KeyCode::KeyT]) {
         Some(MenuChoice::Talents)
-    } else if keys.any_just_pressed([KeyCode::Digit4, KeyCode::Numpad4]) {
+    } else if keys.any_just_pressed([KeyCode::Digit4, KeyCode::Numpad4, KeyCode::KeyP]) {
+        Some(MenuChoice::Professions)
+    } else if keys.any_just_pressed([KeyCode::Digit5, KeyCode::Numpad5]) {
         Some(MenuChoice::Quit)
     } else {
         None
@@ -162,6 +167,7 @@ pub(super) fn main_menu(
         }
         Some(MenuChoice::Inventory) => inv.request_open(),
         Some(MenuChoice::Talents) => talents.request_open(),
+        Some(MenuChoice::Professions) => craft.request_open(),
         Some(MenuChoice::Quit) => {
             exit.write(AppExit::Success);
         }
@@ -331,7 +337,8 @@ fn spawn_menu(
             for (choice, label) in [
                 (MenuChoice::Inventory, "2  Karakter".to_string()),
                 (MenuChoice::Talents, format!("3  Talentlar ({free})")),
-                (MenuChoice::Quit, "4  Çık".to_string()),
+                (MenuChoice::Professions, "4  Meslekler".to_string()),
+                (MenuChoice::Quit, "5  Çık".to_string()),
             ] {
                 let lit = choice == MenuChoice::Talents && free > 0;
                 row.spawn((

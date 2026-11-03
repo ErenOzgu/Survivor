@@ -16,6 +16,7 @@ pub mod bosses;
 pub mod cards;
 pub mod char_view;
 pub mod collide;
+pub mod crafting_ui;
 pub mod enemies;
 pub mod flat;
 pub mod fx;
@@ -122,6 +123,7 @@ impl Plugin for CombatPlugin {
                 abilities::AbilitiesPlugin,
                 char_view::CharViewPlugin,
                 boss_portrait::BossPortraitPlugin,
+                crafting_ui::CraftingPlugin,
             ));
     }
 }
