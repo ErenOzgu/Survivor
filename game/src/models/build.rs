@@ -29,6 +29,8 @@ use super::{gear, paths, ModelRequest, ModelRoot, ModelStatus};
 
 /// The right hand's attachment id: a drawn main-hand weapon.
 const ATTACH_HAND_RIGHT: u16 = 1;
+/// The head attachment a helmet rides.
+const ATTACH_HELM: u16 = 11;
 /// Seconds a model may take to load before the request gives up.
 const LOAD_TIMEOUT: f32 = 60.0;
 
@@ -69,6 +71,8 @@ pub(super) struct Pending {
     body: Option<CharBody>,
     items: Vec<PendingItem>,
     since: f32,
+    /// A spell effect model: its particle emitters and ribbons are spawned too.
+    effect: bool,
 }
 
 /// Resolve each new request against the tables; it becomes [`Pending`] or fails.
@@ -141,9 +145,21 @@ fn resolve(
                 body,
                 items: Vec::new(),
                 since: now,
+                effect: false,
             })
         }
         ModelRequest::Character(look) => resolve_character(look, t, asset_server, now),
+        ModelRequest::Effect { path, scale } => Ok(Pending {
+            handle: asset_server.load(m2_url(path)),
+            dir: paths::model_dir(path).to_string(),
+            path: path.clone(),
+            scale: *scale,
+            skins: [None, None, None],
+            body: None,
+            items: Vec::new(),
+            since: now,
+            effect: true,
+        }),
     }
 }
 
@@ -210,7 +226,20 @@ fn resolve_character(
         };
         match item.slot.body_index() {
             Some(i) => bodyslots[i] = item.display_id,
-            None if item.slot == GearSlot::Head => helm = item.display_id,
+            None if item.slot == GearSlot::Head => {
+                // The helm hides hair by its geosets and rides the head attachment as a model.
+                helm = item.display_id;
+                if let Some(model) = row.model[0].as_deref() {
+                    held.push(PendingItem {
+                        display: item.display_id,
+                        attach: ATTACH_HELM,
+                        handle: asset_server
+                            .load(m2_url(&paths::helm_model_path(model, race, sex))),
+                        dir: paths::HELM_DIR.to_string(),
+                        texture: row.model_texture[0].clone(),
+                    });
+                }
+            }
             None => {
                 if let Some(p) = held_item(item, row, asset_server) {
                     held.push(p);
@@ -238,6 +267,7 @@ fn resolve_character(
         }),
         items: held,
         since: now,
+        effect: false,
     })
 }
 
@@ -258,7 +288,7 @@ fn held_item(
 }
 
 /// Build each pending model whose assets are ready.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn finish_models(
     mut commands: Commands,
     pending: Query<(Entity, &Pending)>,
@@ -577,6 +607,39 @@ fn spawn_body(
             if UvLoops::of(sub).animates() {
                 part.insert(AnimMatPart);
             }
+        }
+    }
+
+    // A spell effect's particles and ribbons, riding the model root (as the client's effect
+    // instances do, minus per-bone placement: spell models emit near their origin). When the
+    // owner goes (a missile hits), the particles drain in place instead of vanishing.
+    if p.effect {
+        for em in &model.emitters {
+            benilla_world::particles::spawn_emitter(
+                commands,
+                em,
+                Transform::IDENTITY,
+                benilla_world::particles::EmitterFrames {
+                    owner: Some((root, [0.0; 3])),
+                    anchor: Some(root),
+                    alpha: None,
+                    light_node: None,
+                    on_owner_loss: benilla_world::particles::OwnerLoss::Drain,
+                },
+                benilla_world::particles::EmitClock::Effect(None),
+            );
+        }
+        for rb in &model.ribbons {
+            benilla_world::ribbons::spawn_ribbon(
+                commands,
+                rb,
+                root,
+                false,
+                p.scale,
+                benilla_world::ribbons::RibbonSeq::Fixed(0),
+                None,
+                None,
+            );
         }
     }
 

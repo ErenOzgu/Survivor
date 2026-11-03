@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use benilla_assets::{LockRecover, WorldAssets};
 use benilla_formats::{
-    load_creature_catalog, load_item_display_catalog, Chain, CharCreateCatalog, CharSections,
-    CharacterGeosets, CreatureCatalog, ItemDisplayCatalog,
+    load_creature_catalog, load_gameobject_catalog, load_item_display_catalog, Chain,
+    CharCreateCatalog, CharSections, CharacterGeosets, CreatureCatalog, GameObjectCatalog,
+    ItemDisplayCatalog,
 };
 use bevy::prelude::*;
 
@@ -26,6 +27,8 @@ pub struct Tables {
     pub geosets: Option<CharacterGeosets>,
     pub sections: Option<CharSections>,
     pub items: Option<ItemDisplayCatalog>,
+    /// `GameObjectDisplayInfo`: chests, sacks and other placed objects by display id.
+    pub objects: Option<GameObjectCatalog>,
     /// The chain the body composite reads its textures from.
     pub chain: Arc<Mutex<Chain>>,
 }
@@ -50,6 +53,7 @@ pub(super) fn load_model_data(mut commands: Commands, world_assets: Option<Res<W
     let geosets = ok("character geosets", CharacterGeosets::load(&mut chain));
     let sections = ok("character skins", CharSections::load(&mut chain));
     let items = ok("item displays", load_item_display_catalog(&mut chain));
+    let objects = ok("object displays", load_gameobject_catalog(&mut chain));
     drop(chain);
     info!(
         "rnsurvivors: model tables: {} creature displays, {} item displays",
@@ -63,6 +67,7 @@ pub(super) fn load_model_data(mut commands: Commands, world_assets: Option<Res<W
             geosets,
             sections,
             items,
+            objects,
             chain: world_assets.chain.clone(),
         }),
     });

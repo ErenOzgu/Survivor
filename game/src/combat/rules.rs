@@ -3,6 +3,7 @@
 
 use bevy::math::{Vec2, Vec3};
 
+use crate::content::abilities::AbilityId;
 use crate::content::items::{Affix, Item};
 use crate::content::passives::{PassiveId, MAX_PASSIVES};
 use crate::content::talents::{TalentEffect, Talents};
@@ -12,7 +13,7 @@ use crate::content::{SkillId, MAX_SKILLS};
 pub const START_SKILL: SkillId = SkillId::Frostbolt;
 /// Hero health and its regeneration per second.
 pub const HERO_MAX_HEALTH: f32 = 100.0;
-pub const HERO_REGEN: f32 = 0.6;
+pub const HERO_REGEN: f32 = 1.0;
 /// Cards offered per level-up.
 pub const CARDS: usize = 3;
 /// Health a "can iksiri" card gives back, when there is nothing left to learn.
@@ -289,6 +290,21 @@ impl Bonus {
         b
     }
 
+    /// One bonus, as an item's.
+    pub fn from_affix((a, v): (Affix, f32)) -> Bonus {
+        let mut b = Bonus::default();
+        match a {
+            Affix::Power => b.damage = v,
+            Affix::Haste => b.haste = v,
+            Affix::Speed => b.speed = v,
+            Affix::Health => b.health = v,
+            Affix::Magnet => b.magnet = v,
+            Affix::Crit => b.crit = v,
+            Affix::Wisdom => b.xp = v,
+        }
+        b
+    }
+
     /// What bought talents give.
     pub fn from_talents(t: &Talents) -> Bonus {
         use TalentEffect as E;
@@ -367,6 +383,91 @@ impl Stats {
             xp_mul: 1.0 + b(PassiveId::Wisdom) + x.xp,
             regen: HERO_REGEN + x.regen,
         }
+    }
+}
+
+impl Stats {
+    /// The stats with the running cooldown spells' multipliers on top.
+    pub fn with_abilities(mut self, a: &AbilityState) -> Self {
+        for id in a.active() {
+            let d = id.def();
+            self.damage_mul *= d.damage_mul;
+            self.cooldown_mul *= d.cooldown_mul;
+            self.speed_mul *= d.speed_mul;
+        }
+        self
+    }
+}
+
+/// The run's cooldown spells: seconds until each may be cast again, which once-per-run ones
+/// are spent, and seconds left on the running ones.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AbilityState {
+    pub ready_in: Vec<(AbilityId, f32)>,
+    pub spent: Vec<AbilityId>,
+    pub running: Vec<(AbilityId, f32)>,
+}
+
+impl AbilityState {
+    pub fn ready_in(&self, id: AbilityId) -> f32 {
+        self.ready_in
+            .iter()
+            .find(|(a, _)| *a == id)
+            .map_or(0.0, |(_, t)| *t)
+    }
+
+    pub fn is_spent(&self, id: AbilityId) -> bool {
+        self.spent.contains(&id)
+    }
+
+    pub fn can_cast(&self, id: AbilityId) -> bool {
+        !self.is_spent(id) && self.ready_in(id) <= 0.0
+    }
+
+    /// Seconds left on a running spell (0 if not running).
+    pub fn left(&self, id: AbilityId) -> f32 {
+        self.running
+            .iter()
+            .find(|(a, _)| *a == id)
+            .map_or(0.0, |(_, t)| *t)
+    }
+
+    pub fn active(&self) -> impl Iterator<Item = AbilityId> + '_ {
+        self.running.iter().map(|(a, _)| *a)
+    }
+
+    /// Casts it if it may be cast; returns whether it was.
+    pub fn cast(&mut self, id: AbilityId) -> bool {
+        if !self.can_cast(id) {
+            return false;
+        }
+        let d = id.def();
+        match d.cooldown {
+            Some(cd) => {
+                self.ready_in.retain(|(a, _)| *a != id);
+                self.ready_in.push((id, cd));
+            }
+            None => self.spent.push(id),
+        }
+        self.running.retain(|(a, _)| *a != id);
+        self.running.push((id, d.duration));
+        true
+    }
+
+    /// Advances the clocks; returns the spells that ran out.
+    pub fn tick(&mut self, dt: f32) -> Vec<AbilityId> {
+        for (_, t) in &mut self.ready_in {
+            *t = (*t - dt).max(0.0);
+        }
+        let mut ended = Vec::new();
+        for (a, t) in &mut self.running {
+            *t -= dt;
+            if *t <= 0.0 {
+                ended.push(*a);
+            }
+        }
+        self.running.retain(|(_, t)| *t > 0.0);
+        ended
     }
 }
 
@@ -643,6 +744,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cooldown_spells_cast_run_and_refill() {
+        let mut a = AbilityState::default();
+        assert!(a.cast(AbilityId::Bloodlust));
+        assert!(!a.cast(AbilityId::Bloodlust), "twice");
+        assert!(a.cast(AbilityId::ArcanePower));
+        let s = Stats::default().with_abilities(&a);
+        assert!(s.damage_mul > 1.0 && s.cooldown_mul < 1.0 && s.speed_mul > 1.0);
+        let ended = a.tick(16.0);
+        assert_eq!(ended, vec![AbilityId::ArcanePower]);
+        assert!(!a.can_cast(AbilityId::ArcanePower));
+        a.tick(300.0);
+        assert!(a.can_cast(AbilityId::ArcanePower));
+        assert!(!a.can_cast(AbilityId::Bloodlust), "once per run");
+        assert_eq!(a.running.len(), 0);
+    }
+
+    #[test]
     fn xp_curve_grows() {
         assert_eq!(xp_to_next(1), 8);
         for l in 1..60 {
@@ -904,6 +1022,8 @@ mod tests {
             level: 5,
             affixes: vec![(Affix::Power, 0.1), (Affix::Health, 12.0)],
             look: 0,
+            forge: 0,
+            enchant: None,
         };
         let mut t = Talents::default();
         t.buy(TalentId::IceShell, 9);

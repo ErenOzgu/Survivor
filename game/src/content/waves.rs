@@ -31,7 +31,7 @@ pub struct WaveParams {
     pub weights: [f32; 5],
 }
 
-/// The wave at `t` seconds into the run: steadily denser, then stronger; wolves join at 0:45,
+/// The wave at `t` seconds into the run: steadily denser, then stronger; wolves join at 1:15,
 /// spiders at 2:00, geomancers at 3:00, sappers at 4:30.
 pub fn wave_at(t: f32) -> WaveParams {
     let t = t.max(0.0);
@@ -44,12 +44,27 @@ pub fn wave_at(t: f32) -> WaveParams {
         damage_mul: 1.0 + t / 400.0,
         weights: [
             1.0,
-            0.9 * ramp(45.0, 60.0),
+            0.9 * ramp(75.0, 60.0),
             0.7 * ramp(120.0, 90.0),
             0.45 * ramp(180.0, 90.0),
             0.4 * ramp(270.0, 90.0),
         ],
     }
+}
+
+/// While a boss fights, the waves ease off so the fight stays readable: groups come this much
+/// slower and the crowd is capped at this share.
+pub const BOSS_CALM_INTERVAL: f32 = 2.2;
+pub const BOSS_CALM_ALIVE: f32 = 0.45;
+
+/// The wave with a boss fight's calm on top.
+pub fn calmed(mut w: WaveParams, boss_fighting: bool) -> WaveParams {
+    if boss_fighting {
+        w.interval *= BOSS_CALM_INTERVAL;
+        w.max_alive = ((w.max_alive as f32) * BOSS_CALM_ALIVE).round().max(10.0) as u32;
+        w.group = w.group.min(2);
+    }
+    w
 }
 
 /// The kind for a roll `r` in `0..1` under `weights` (in [`EnemyKind::NORMAL`] order).
@@ -84,6 +99,14 @@ mod tests {
             prev = w;
         }
         assert!(prev.interval >= 0.25 && prev.max_alive <= 220);
+    }
+
+    #[test]
+    fn a_boss_fight_thins_the_crowd() {
+        let w = wave_at(185.0);
+        let c = calmed(w, true);
+        assert!(c.interval > w.interval && c.max_alive < w.max_alive && c.group <= 2);
+        assert_eq!(calmed(w, false), w);
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use bevy::camera::{PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::render::view::Hdr;
 
@@ -21,6 +21,10 @@ const NEAR: f32 = benilla_world::view::NEARCLIP_DEFAULT;
 const FOVY: f32 = 0.96;
 /// Camera turn speed for Q/E, radians per second.
 const TURN_SPEED: f32 = 1.8;
+/// Right-mouse look: radians per pixel of mouse motion, and the pitch range (looking down).
+const MOUSE_TURN: f32 = 0.006;
+const MOUSE_PITCH: f32 = 0.004;
+const PITCH_RANGE: (f32, f32) = (-1.4, -0.25);
 
 /// The env var overriding the hero's run speed (yards per second).
 pub const SPEED_VAR: &str = "RNS_SPEED";
@@ -43,9 +47,7 @@ impl Plugin for GamePlugin {
             )
             .add_systems(
                 Update,
-                (move_hero, follow_camera)
-                    .chain()
-                    .in_set(WorldStage::Input),
+                (move_hero, follow_camera).chain().in_set(WorldStage::Input),
             );
     }
 }
@@ -63,6 +65,13 @@ pub struct HeroSpeed(pub f32);
 pub struct Hero {
     /// Standing on streamed terrain; false until the ground under it is resident.
     pub grounded: bool,
+    /// The current velocity (yards per second), easing toward the keys' direction.
+    pub vel: Vec3,
+    /// Where the body faces (yaw, radians), turning smoothly toward the goal.
+    pub facing: f32,
+    /// Height above the ground in a jump (yards), and its upward speed.
+    pub air: f32,
+    pub rise: f32,
 }
 
 /// The follow camera's state.
@@ -150,20 +159,43 @@ fn spawn_camera(
     ));
 }
 
-/// WASD moves the hero relative to the camera; it follows the terrain heightfield.
+/// WASD moves the hero relative to the camera, easing into each new direction; the body turns
+/// smoothly toward where it goes. While the right mouse button is held it faces the camera's
+/// forward (as in WoW) unless it is walking another way. It follows the terrain heightfield.
+#[allow(clippy::too_many_arguments)]
 fn move_hero(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     speed: Res<HeroSpeed>,
     streamer: Option<Res<TerrainStreamer>>,
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     cams: Query<&FollowCam>,
-    mut heroes: Query<(&mut Transform, &mut Hero)>,
+    hold: Option<Res<crate::combat::CardHold>>,
+    world: benilla_world::collision::WorldCollision,
+    mut heroes: Query<(
+        &mut Transform,
+        &mut Hero,
+        Option<&mut crate::models::ModelAnim>,
+    )>,
 ) {
-    let Ok((mut xf, mut hero)) = heroes.single_mut() else {
+    let Ok((mut xf, mut hero, anim)) = heroes.single_mut() else {
         return;
     };
     let yaw = cams.single().map(|c| c.yaw).unwrap_or(0.0);
+    // The level-up cards hold the hero where it stands (the clock runs on for the scenery).
+    let dt = if hold.is_some_and(|h| h.0) {
+        0.0
+    } else {
+        time.delta_secs()
+    };
+    // Space jumps (from the ground); the body rises and falls back under gravity.
+    if dt > 0.0 && hero.grounded && hero.air <= 0.0 && keys.just_pressed(KeyCode::Space) {
+        hero.rise = motion::JUMP_SPEED;
+    }
+    let was_air = hero.air > 0.0 || hero.rise > 0.0;
+    (hero.air, hero.rise) = motion::jump_step(hero.air, hero.rise, dt);
+    let in_air = hero.air > 0.0 || hero.rise > 0.0;
 
     let mut input = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
@@ -178,12 +210,57 @@ fn move_hero(
     if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
         input.x -= 1.0;
     }
+    // Both mouse buttons held: run forward, as in WoW.
+    if mouse.pressed(MouseButton::Right) && mouse.pressed(MouseButton::Left) {
+        input.y = input.y.max(1.0);
+    }
     let dir = motion::move_dir(input, yaw);
+    // Back (S) walks backwards, slower, still facing forward.
+    let back = motion::backpedals(input);
+    let pace = if back {
+        speed.0 * motion::BACKPEDAL_MUL
+    } else {
+        speed.0
+    };
     // No walking off into unstreamed void: hold still until the ground is under the hero.
     if hero.grounded {
-        xf.translation = motion::step(xf.translation, dir, speed.0, time.delta_secs());
-        if let Some(face) = motion::facing_yaw(dir) {
-            xf.rotation = Quat::from_rotation_y(face);
+        hero.vel = motion::approach(hero.vel, dir * pace, motion::HERO_ACCEL, dt);
+        xf.translation += hero.vel * dt;
+        let goal = if back {
+            // Face away from the way it goes (the camera's forward, turned by A/D).
+            motion::facing_yaw(-hero.vel).or(Some(yaw))
+        } else {
+            motion::facing_yaw(hero.vel)
+                .filter(|_| hero.vel.length() > 0.5)
+                .or_else(|| mouse.pressed(MouseButton::Right).then_some(yaw))
+        };
+        if let Some(goal) = goal {
+            hero.facing = motion::turn_toward(hero.facing, goal, motion::HERO_TURN * dt);
+        }
+        xf.rotation = Quat::from_rotation_y(hero.facing);
+    } else {
+        hero.vel = Vec3::ZERO;
+    }
+
+    if let Some(mut anim) = anim {
+        use crate::models::AnimState;
+        let backing = back && hero.vel.length() > 0.5;
+        if in_air {
+            // The take-off clip once, then the air loop under it.
+            if !was_air {
+                anim.play(AnimState::JumpStart);
+            }
+            anim.state = AnimState::Jump;
+        } else if was_air {
+            anim.state = AnimState::Idle;
+            // Landing on the spot bends the knees; running on, the gait picks straight up.
+            if hero.vel.length() < 1.5 {
+                anim.play(AnimState::JumpLand);
+            }
+        } else if backing {
+            anim.state = AnimState::Backpedal;
+        } else if (was_air && anim.state == AnimState::Jump) || anim.state == AnimState::Backpedal {
+            anim.state = AnimState::Idle;
         }
     }
 
@@ -191,23 +268,45 @@ fn move_hero(
         (Some(s), Some(a)) => terrain_height_under(s, a, xf.translation),
         _ => None,
     };
+    // No terrain (a dungeon is all building): the floor under the feet, found by a ray.
+    let ground = ground.or_else(|| {
+        crate::content::zones::current()
+            .def()
+            .dungeon
+            .then(|| floor_under(&world, xf.translation - Vec3::Y * hero.air))
+            .flatten()
+    });
     let (y, grounded) = motion::follow_ground(xf.translation.y, ground);
     if grounded && !hero.grounded {
         info!("rnsurvivors: hero on the ground at y={y:.1}");
     }
-    xf.translation.y = y;
+    // In a jump the feet are that high over the ground.
+    xf.translation.y = if grounded { y + hero.air } else { y };
     hero.grounded = grounded;
 }
 
+/// The floor under a point where there is no terrain (inside a dungeon's building): a ray down
+/// from a little above the feet.
+pub fn floor_under(world: &benilla_world::collision::WorldCollision, feet: Vec3) -> Option<f32> {
+    let from = feet + Vec3::Y * 1.5;
+    world
+        .ray_body(from, Dir3::NEG_Y, 12.0)
+        .map(|hit| from.y - hit.distance)
+}
+
 /// The camera follows the hero from behind and above; the wheel zooms, Q/E turn it.
+#[allow(clippy::too_many_arguments)]
 fn follow_camera(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
-    heroes: Query<&Transform, (With<Hero>, Without<FollowCam>)>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    motion_in: Res<AccumulatedMouseMotion>,
+    heroes: Query<(&Transform, &Hero), Without<FollowCam>>,
     mut cams: Query<(&mut Transform, &mut FollowCam)>,
+    mut cursors: Query<&mut bevy::window::CursorOptions>,
 ) {
-    let (Ok(hero), Ok((mut xf, mut cam))) = (heroes.single(), cams.single_mut()) else {
+    let (Ok((hero, body)), Ok((mut xf, mut cam))) = (heroes.single(), cams.single_mut()) else {
         return;
     };
     let lines = match scroll.unit {
@@ -217,13 +316,31 @@ fn follow_camera(
     if lines != 0.0 {
         cam.distance = motion::zoom(cam.distance, lines);
     }
+    // Right mouse held: the mouse turns the camera (and so the hero), the cursor hides.
+    let looking = mouse.pressed(MouseButton::Right);
+    if looking {
+        cam.yaw -= motion_in.delta.x * MOUSE_TURN;
+        cam.pitch =
+            (cam.pitch - motion_in.delta.y * MOUSE_PITCH).clamp(PITCH_RANGE.0, PITCH_RANGE.1);
+    }
+    if mouse.just_pressed(MouseButton::Right) || mouse.just_released(MouseButton::Right) {
+        for mut c in &mut cursors {
+            c.visible = !looking;
+            c.grab_mode = if looking {
+                bevy::window::CursorGrabMode::Confined
+            } else {
+                bevy::window::CursorGrabMode::None
+            };
+        }
+    }
     if keys.pressed(KeyCode::KeyQ) {
         cam.yaw += TURN_SPEED * time.delta_secs();
     }
     if keys.pressed(KeyCode::KeyE) {
         cam.yaw -= TURN_SPEED * time.delta_secs();
     }
-    let target = hero.translation + Vec3::Y * motion::CAM_LOOK_HEIGHT;
+    // Not up and down with a jump: the camera keeps to the ground under the hero.
+    let target = hero.translation + Vec3::Y * (motion::CAM_LOOK_HEIGHT - body.air);
     xf.translation = target + motion::camera_offset(cam.yaw, cam.pitch, cam.distance);
     xf.look_at(target, Vec3::Y);
 }

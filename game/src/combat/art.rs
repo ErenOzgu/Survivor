@@ -9,9 +9,11 @@ use bevy::prelude::*;
 
 use benilla_assets::{LockRecover, WorldAssets};
 use benilla_formats::{
-    load_spell_catalog, load_spell_visual_catalog, SpellCatalog, SpellVisualCatalog,
+    load_loading_screens, load_spell_catalog, load_spell_visual_catalog, SpellCatalog,
+    SpellVisualCatalog, VisualStages,
 };
 
+use crate::content::abilities::AbilityId;
 use crate::content::passives::PassiveId;
 use crate::content::SkillId;
 
@@ -20,7 +22,8 @@ pub struct ArtPlugin;
 impl Plugin for ArtPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<WowArt>()
-            .add_systems(Startup, load_art.after(benilla_assets::AssetSet::Open));
+            .add_systems(Startup, load_art.after(benilla_assets::AssetSet::Open))
+            .add_systems(Update, reresolve_class);
     }
 }
 
@@ -30,6 +33,65 @@ pub const PLATE_BORDER: &str = "Interface\\Tooltips\\Nameplate-Border";
 pub const DIALOG_BACKGROUND: &str = "Interface\\DialogFrame\\UI-DialogBox-Background";
 pub const TOOLTIP_BACKGROUND: &str = "Interface\\Tooltips\\UI-Tooltip-Background";
 pub const SLOT_FRAME: &str = "Interface\\Buttons\\UI-Quickslot2";
+/// The player frame (the target frame, mirrored), the class icons, the action bar and its
+/// gryphons, the minimap's ring, the boss skull.
+pub const TARGET_FRAME: &str = "Interface\\TargetingFrame\\UI-TargetingFrame";
+pub const CLASS_ICONS: &str = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes";
+pub const MAIN_BAR: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf";
+pub const END_CAP: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf";
+pub const MINIMAP_BORDER: &str = "Interface\\Minimap\\UI-Minimap-Border";
+pub const MINIMAP_ZOOM_IN: &str = "Interface\\Minimap\\UI-Minimap-ZoomInButton-Up";
+pub const MINIMAP_ZOOM_OUT: &str = "Interface\\Minimap\\UI-Minimap-ZoomOutButton-Up";
+pub const BOSS_SKULL: &str = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull";
+/// The character window: its four frame pieces, its close button, and the empty slots' pictures.
+pub const PAPERDOLL: [&str; 4] = [
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-TopLeft",
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-TopRight",
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-BottomLeft",
+    "Interface\\PaperDollInfoFrame\\UI-Character-General-BottomRight",
+];
+pub const CLOSE_BUTTON: &str = "Interface\\Buttons\\UI-Panel-MinimizeButton-Up";
+pub const SLOT_PICTURES: [&str; 16] = [
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Head",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Neck",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Shoulder",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Chest",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Shirt",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Tabard",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Wrists",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Hands",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Waist",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Legs",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Feet",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Finger",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Trinket",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-MainHand",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-SecondaryHand",
+    "Interface\\Paperdoll\\UI-PaperDoll-Slot-Ranged",
+];
+/// Every interface texture loaded at start (beside the character window's).
+pub const UI_TEXTURES: [&str; 16] = [
+    STATUS_BAR,
+    PLATE_BORDER,
+    DIALOG_BACKGROUND,
+    TOOLTIP_BACKGROUND,
+    SLOT_FRAME,
+    TALENT_FROST,
+    TALENT_FIRE,
+    TALENT_ARCANE,
+    TARGET_FRAME,
+    CLASS_ICONS,
+    MAIN_BAR,
+    END_CAP,
+    MINIMAP_BORDER,
+    MINIMAP_ZOOM_IN,
+    MINIMAP_ZOOM_OUT,
+    BOSS_SKULL,
+];
+/// The mage talent trees' paintings (their top-left piece), behind the level-up cards' icons.
+pub const TALENT_FROST: &str = "Interface\\TalentFrame\\MageFrost-TopLeft";
+pub const TALENT_FIRE: &str = "Interface\\TalentFrame\\MageFire-TopLeft";
+pub const TALENT_ARCANE: &str = "Interface\\TalentFrame\\MageArcane-TopLeft";
 
 /// What a skill is in the client. `spell_id`, `visual` and `icon_path` feed the spell effects
 /// (next) and the log.
@@ -57,6 +119,190 @@ pub struct WowArt {
     pub spells: Option<SpellCatalog>,
     /// The spell visual tables (missile models, cast and impact kits), for the spell effects.
     pub visuals: Option<SpellVisualCatalog>,
+    /// Each skill's effect models, resolved from the visual tables.
+    pub fx: HashMap<SkillId, SkillFx>,
+    /// The XP orb's look: a green missile model from the client.
+    pub orb_model: Option<String>,
+    /// The cooldown spells' icons and effects.
+    pub abilities: HashMap<AbilityId, (Option<Handle<Image>>, SkillFx)>,
+    /// Loading-screen paintings for the level-up cards, by [`SCENE_NEEDLES`] key.
+    pub scenes: HashMap<&'static str, Handle<Image>>,
+}
+
+/// Which painting the level-up cards show behind the icon: `kart=agac` (the talent trees) or
+/// `kart=yukleme` (the loading screens, the default) in the settings file, or `RNS_CARD_ART`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CardArt {
+    Talent,
+    Loading,
+    /// The hero casting the card's skill, live (a painting for the other cards).
+    #[default]
+    Scene,
+}
+
+pub const CARD_ART_VAR: &str = "RNS_CARD_ART";
+
+impl CardArt {
+    pub fn parse(v: &str) -> Option<Self> {
+        match v.trim().to_ascii_lowercase().as_str() {
+            "agac" | "ağaç" | "talent" => Some(CardArt::Talent),
+            "yukleme" | "yükleme" | "loading" => Some(CardArt::Loading),
+            "sahne" | "scene" => Some(CardArt::Scene),
+            _ => None,
+        }
+    }
+
+    pub fn from_settings() -> Self {
+        std::env::var(CARD_ART_VAR)
+            .ok()
+            .or_else(|| {
+                std::fs::read_to_string(crate::settings::settings_path())
+                    .ok()
+                    .and_then(|t| crate::settings::setting(&t, "kart"))
+            })
+            .and_then(|v| Self::parse(&v))
+            .unwrap_or_default()
+    }
+}
+
+/// Each card school's loading screen, by words in its file name, in preference order.
+pub const SCENE_NEEDLES: [(&str, &[&str]); 5] = [
+    ("frost", &["naxxramas", "scholomance", "easternkingdom"]),
+    ("fire", &["moltencore", "blackrock", "ragefire"]),
+    ("arcane", &["diremaul", "ahnqiraj", "kalimdor"]),
+    ("passive", &["easternkingdom"]),
+    ("potion", &["kalimdor"]),
+];
+
+/// The first path (by needle order) whose file name holds a needle.
+pub fn pick_scene<'a>(paths: &'a [String], needles: &[&str]) -> Option<&'a str> {
+    needles.iter().find_map(|n| {
+        paths
+            .iter()
+            .find(|p| {
+                let file = p.rsplit('\\').next().unwrap_or(p).to_ascii_lowercase();
+                file.contains(n)
+            })
+            .map(String::as_str)
+    })
+}
+
+/// The part of a `w`×`h` loading screen a card's oval shows: a centred cut at `aspect`
+/// (width / height), `zoom` of the width. A square file holds a 4:3 picture in its top.
+pub fn scene_crop(w: f32, h: f32, aspect: f32, zoom: f32) -> Rect {
+    let content_h = if (w - h).abs() < 1.0 { w * 0.75 } else { h };
+    let mut cw = w * zoom;
+    let mut ch = cw / aspect;
+    if ch > content_h {
+        ch = content_h;
+        cw = ch * aspect;
+    }
+    let (cx, cy) = (w / 2.0, content_h / 2.0);
+    Rect::new(cx - cw / 2.0, cy - ch / 2.0, cx + cw / 2.0, cy + ch / 2.0)
+}
+
+/// The effect models a skill shows (paths of `Spells\\…mdx`, as the client names them).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SkillFx {
+    /// What flies.
+    pub missile: Option<String>,
+    /// Where a hit lands (on the enemy).
+    pub impact: Option<String>,
+    /// On the ground: the area a skill covers, or its burst at the hero's feet.
+    pub area: Option<String>,
+    /// On what it leaves frozen.
+    pub state: Option<String>,
+    /// `SoundEntries` kits: when it is cast, and where it hits.
+    pub cast_sound: Option<u32>,
+    pub impact_sound: Option<u32>,
+}
+
+/// Attachment tags as the visual kits use them.
+const TAG_FEET: u16 = 0x13;
+const TAG_CHEST: u16 = 0x22;
+
+/// One visual's effect models, by role: `effect_path` gives an effect id's model, `kit` a kit's
+/// `(tag, effect id)` slots.
+pub fn visual_fx(
+    stages: &VisualStages,
+    effect_path: &dyn Fn(u32) -> Option<String>,
+    kit: &dyn Fn(u32) -> Vec<(u16, u32)>,
+    kit_sound: &dyn Fn(u32) -> Option<u32>,
+) -> SkillFx {
+    let sound = |k: u32| (k != 0).then(|| kit_sound(k)).flatten();
+    let pick = |kit_id: u32, prefer: &[u16]| -> Option<String> {
+        if kit_id == 0 {
+            return None;
+        }
+        let slots = kit(kit_id);
+        prefer
+            .iter()
+            .find_map(|t| slots.iter().find(|(tag, _)| tag == t))
+            .or(slots.first())
+            .and_then(|(_, id)| effect_path(*id))
+    };
+    SkillFx {
+        missile: (stages.missile_model != 0)
+            .then(|| effect_path(stages.missile_model))
+            .flatten(),
+        impact: pick(stages.impact, &[TAG_CHEST, u16::MAX]),
+        area: (stages.area_effect != 0)
+            .then(|| effect_path(stages.area_effect))
+            .flatten()
+            .or_else(|| {
+                // A burst on the ground: the cast kit's feet or world slot only (not the hands).
+                let slots = if stages.cast == 0 {
+                    Vec::new()
+                } else {
+                    kit(stages.cast)
+                };
+                [TAG_FEET, u16::MAX]
+                    .iter()
+                    .find_map(|t| slots.iter().find(|(tag, _)| tag == t))
+                    .and_then(|(_, id)| effect_path(*id))
+            }),
+        state: pick(stages.state, &[u16::MAX, TAG_FEET]),
+        cast_sound: sound(stages.cast).or_else(|| sound(stages.precast)),
+        impact_sound: sound(stages.impact),
+    }
+}
+
+/// Where each skill borrows its effects from besides its own spell (Arcane Missiles' missile is
+/// the triggered "Arcane Missile"; an evolution takes its parent's).
+pub fn fx_sources(id: SkillId) -> &'static [&'static str] {
+    // The borrowed missiles are the Mage's; another class's spells carry their own.
+    if crate::content::classes::current() != crate::content::classes::ClassId::Mage {
+        return &[];
+    }
+    match id {
+        SkillId::ArcaneMissiles | SkillId::ArcaneStorm => &["Arcane Missile", "Arcane Missiles"],
+        SkillId::WinterBolts => &["Frostbolt", "Frost Nova"],
+        _ => &[],
+    }
+}
+
+/// A spell whose ground look a skill borrows when its own has none (Pyroblast's burning ground
+/// wears Flamestrike's fire).
+pub fn area_fallback(id: SkillId) -> Option<&'static str> {
+    match id {
+        // The class's own burning ground (the Mage's Flamestrike).
+        SkillId::Pyroblast => Some(SkillId::Flamestrike.icon_spell()),
+        _ => None,
+    }
+}
+
+/// Merges effect sets: the first that has each role wins.
+pub fn merge_fx(sets: impl Iterator<Item = SkillFx>) -> SkillFx {
+    let mut out = SkillFx::default();
+    for s in sets {
+        out.missile = out.missile.or(s.missile);
+        out.impact = out.impact.or(s.impact);
+        out.area = out.area.or(s.area);
+        out.state = out.state.or(s.state);
+        out.cast_sound = out.cast_sound.or(s.cast_sound);
+        out.impact_sound = out.impact_sound.or(s.impact_sound);
+    }
+    out
 }
 
 impl WowArt {
@@ -106,19 +352,45 @@ fn load_art(
         info!("rnsurvivors: no WoW data, plain UI");
         return;
     };
-    for path in [
-        STATUS_BAR,
-        PLATE_BORDER,
-        DIALOG_BACKGROUND,
-        TOOLTIP_BACKGROUND,
-        SLOT_FRAME,
-    ] {
+    for path in UI_TEXTURES
+        .iter()
+        .chain(PAPERDOLL.iter())
+        .chain(SLOT_PICTURES.iter())
+        .chain(std::iter::once(&CLOSE_BUTTON))
+    {
+        let path = *path;
         match wa.sprite_texture(path, &mut images) {
             Some(h) => {
                 art.ui.insert(path, h);
             }
             None => warn!("rnsurvivors: interface texture {path} not found"),
         }
+    }
+    let screens = {
+        let mut chain = wa.chain.lock_recover();
+        load_loading_screens(&mut chain)
+    };
+    match screens {
+        Ok(screens) => {
+            let paths: Vec<String> = (0..400)
+                .filter_map(|id| screens.path(id).map(str::to_string))
+                .collect();
+            for (key, needles) in SCENE_NEEDLES {
+                let Some(path) = pick_scene(&paths, needles) else {
+                    continue;
+                };
+                let stem = path
+                    .strip_suffix(".blp")
+                    .or_else(|| path.strip_suffix(".BLP"));
+                match wa.sprite_texture(stem.unwrap_or(path), &mut images) {
+                    Some(h) => {
+                        art.scenes.insert(key, h);
+                    }
+                    None => warn!("rnsurvivors: loading screen {path} not found"),
+                }
+            }
+        }
+        Err(e) => warn!("rnsurvivors: loading screens unavailable ({e:#})"),
     }
     let catalog = {
         let mut chain = wa.chain.lock_recover();
@@ -131,34 +403,6 @@ fn load_art(
             return;
         }
     };
-    for id in SkillId::every() {
-        let name = id.def().icon_spell;
-        let rows = catalog
-            .iter()
-            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
-        let Some(spell_id) = pick_spell(rows, name) else {
-            warn!("rnsurvivors: no spell named {name:?} in Spell.dbc");
-            continue;
-        };
-        let d = catalog.get(spell_id).expect("picked from the catalog");
-        let icon = d
-            .icon
-            .as_deref()
-            .and_then(|p| wa.sprite_texture(p, &mut images));
-        info!(
-            "rnsurvivors: {name} = spell {spell_id}, visual {}, icon {:?}",
-            d.visual, d.icon
-        );
-        art.skills.insert(
-            id,
-            SkillSpell {
-                spell_id,
-                visual: d.visual,
-                icon_path: d.icon.clone(),
-                icon,
-            },
-        );
-    }
     for p in PassiveId::ALL {
         let name = p.def().icon_spell;
         let rows = catalog
@@ -183,8 +427,133 @@ fn load_art(
         Ok(v) => art.visuals = Some(v),
         Err(e) => warn!("rnsurvivors: spell visuals unavailable ({e:#})"),
     }
+    // Effect models per skill: borrowed sources lead (the missile), then its own visual.
+    if let Some(v) = &art.visuals {
+        let path = |id: u32| v.effect_path(id).map(str::to_string);
+        let kit = |k: u32| v.kit(k).map(|k| k.effects().collect()).unwrap_or_default();
+        let kit_sound = |k: u32| v.kit(k).and_then(|k| k.sound);
+        let fx_of = |spell_name: &str| -> SkillFx {
+            let rows = catalog
+                .iter()
+                .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+            pick_spell(rows, spell_name)
+                .and_then(|sid| catalog.get(sid))
+                .and_then(|d| v.stages(d.visual))
+                .map(|st| visual_fx(st, &path, &kit, &kit_sound))
+                .unwrap_or_default()
+        };
+        let mut abilities = HashMap::new();
+        for a in AbilityId::ALL {
+            let name = a.def().name;
+            let rows = catalog
+                .iter()
+                .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+            let icon = pick_spell(rows, name)
+                .and_then(|sid| catalog.get(sid))
+                .and_then(|d| d.icon.as_deref())
+                .and_then(|p| wa.sprite_texture(p, &mut images));
+            if icon.is_none() {
+                warn!("rnsurvivors: no icon for cooldown {name:?}");
+            }
+            abilities.insert(a, (icon, fx_of(name)));
+        }
+        let orb = fx_of("Wrath").missile;
+        art.orb_model = orb;
+        art.abilities = abilities;
+    }
+    resolve_skills(&mut art, &catalog, &mut wa, &mut images);
+    if dump_wanted() {
+        if let Some(v) = &art.visuals {
+            write_spell_dump(&catalog, v);
+        }
+    }
     art.spells = Some(catalog);
     write_report(&art);
+}
+
+/// The skills' spells for the class being played: each one's icon and effect models (borrowed
+/// missiles first, then its own visual). Run at start and again when the class changes.
+pub fn resolve_skills(
+    art: &mut WowArt,
+    catalog: &SpellCatalog,
+    wa: &mut WorldAssets,
+    images: &mut Assets<Image>,
+) {
+    art.skills.clear();
+    for id in SkillId::every() {
+        let name = id.icon_spell();
+        let rows = catalog
+            .iter()
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+        let Some(spell_id) = pick_spell(rows, name) else {
+            warn!("rnsurvivors: no spell named {name:?} in Spell.dbc");
+            continue;
+        };
+        let d = catalog.get(spell_id).expect("picked from the catalog");
+        let icon = d.icon.as_deref().and_then(|p| wa.sprite_texture(p, images));
+        info!(
+            "rnsurvivors: {name} = spell {spell_id}, visual {}, icon {:?}",
+            d.visual, d.icon
+        );
+        art.skills.insert(
+            id,
+            SkillSpell {
+                spell_id,
+                visual: d.visual,
+                icon_path: d.icon.clone(),
+                icon,
+            },
+        );
+    }
+    let Some(v) = &art.visuals else {
+        return;
+    };
+    let path = |id: u32| v.effect_path(id).map(str::to_string);
+    let kit = |k: u32| v.kit(k).map(|k| k.effects().collect()).unwrap_or_default();
+    let kit_sound = |k: u32| v.kit(k).and_then(|k| k.sound);
+    let fx_of = |spell_name: &str| -> SkillFx {
+        let rows = catalog
+            .iter()
+            .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+        pick_spell(rows, spell_name)
+            .and_then(|sid| catalog.get(sid))
+            .and_then(|d| v.stages(d.visual))
+            .map(|st| visual_fx(st, &path, &kit, &kit_sound))
+            .unwrap_or_default()
+    };
+    let mut fx = HashMap::new();
+    for id in SkillId::every() {
+        let own = fx_of(id.icon_spell());
+        let borrowed: Vec<SkillFx> = fx_sources(id).iter().map(|n| fx_of(n)).collect();
+        let mut merged = merge_fx(borrowed.into_iter().chain(std::iter::once(own)));
+        if merged.area.is_none() {
+            merged.area = area_fallback(id).and_then(|n| fx_of(n).area);
+        }
+        fx.insert(id, merged);
+    }
+    art.fx = fx;
+}
+
+/// When the class changes, its skills' icons and effects are looked up again.
+fn reresolve_class(
+    mut art: ResMut<WowArt>,
+    wa: Option<ResMut<WorldAssets>>,
+    mut images: ResMut<Assets<Image>>,
+    mut last: Local<Option<crate::content::classes::ClassId>>,
+) {
+    let now = crate::content::classes::current();
+    // The start-up lookup was for the default class.
+    let was = *last.get_or_insert(crate::content::classes::ClassId::Mage);
+    if was == now {
+        return;
+    }
+    let (Some(mut wa), Some(catalog)) = (wa, art.spells.take()) else {
+        return;
+    };
+    *last = Some(now);
+    resolve_skills(&mut art, &catalog, &mut wa, &mut images);
+    art.spells = Some(catalog);
+    info!("rnsurvivors: skills looked up again for {now:?}");
 }
 
 /// The report file: what was read from the client, for sharing without the console.
@@ -245,6 +614,64 @@ pub fn visual_rows(
         });
     }
     (missile, rows)
+}
+
+/// The spell dump's file, written beside the report when asked for.
+pub const DUMP_FILE: &str = "rnsurvivors-buyuler.txt";
+
+/// `dokum=1` in the settings file (or `RNS_DUMP_SPELLS=1`): write every spell of the client
+/// with its icon and effect models, to pick looks from.
+fn dump_wanted() -> bool {
+    std::env::var("RNS_DUMP_SPELLS").as_deref() == Ok("1")
+        || std::fs::read_to_string(crate::settings::settings_path())
+            .ok()
+            .and_then(|t| crate::settings::setting(&t, "dokum"))
+            .is_some_and(|v| v == "1")
+}
+
+/// One spell per name and look (its ranks share them), by name: id, rank, icon, and each
+/// visual stage's models.
+/// One dump row: name, spell id, rank, icon, visual.
+type DumpRow = (String, u32, Option<String>, Option<String>, u32);
+
+fn write_spell_dump(catalog: &SpellCatalog, visuals: &SpellVisualCatalog) {
+    use std::fmt::Write as _;
+    let mut rows: Vec<DumpRow> = catalog
+        .iter()
+        .filter(|(_, d)| d.visual != 0)
+        .map(|(id, d)| (d.name.clone(), id, d.rank.clone(), d.icon.clone(), d.visual))
+        .collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    rows.dedup_by(|b, a| a.0 == b.0 && a.4 == b.4);
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "Rnsurvivors büyü dökümü: istemcindeki her büyü (adı, numarası, ikonu, efekt modelleri).\n\
+         Beğendiğin bir efektin adını ya da yolunu yazman yeter.\n"
+    );
+    for (name, id, rank, icon, visual) in &rows {
+        let _ = writeln!(
+            out,
+            "[{name}] spell {id}{} · ikon {} · visual {visual}",
+            rank.as_deref()
+                .map(|r| format!(" ({r})"))
+                .unwrap_or_default(),
+            icon.as_deref().unwrap_or("-"),
+        );
+        let (missile, stages) = visual_rows(visuals, *visual);
+        if let Some(m) = missile {
+            let _ = writeln!(out, "    füze: {m}");
+        }
+        for st in stages {
+            for m in st.models {
+                let _ = writeln!(out, "    {}: {m}", st.stage);
+            }
+        }
+    }
+    match std::fs::write(DUMP_FILE, &out) {
+        Ok(()) => info!("rnsurvivors: {} spells dumped to {DUMP_FILE}", rows.len()),
+        Err(e) => warn!("rnsurvivors: could not write {DUMP_FILE}: {e}"),
+    }
 }
 
 /// A kit slot's attachment, as a readable name.
@@ -308,6 +735,20 @@ fn write_report(art: &WowArt) {
             }
         }
     }
+    let _ = writeln!(out, "\n== Kullanılan efektler ==");
+    for id in SkillId::every() {
+        let fx = art.fx.get(&id).cloned().unwrap_or_default();
+        let _ = writeln!(
+            out,
+            "[{}] füze {:?} · isabet {:?} · alan {:?} · durum {:?}",
+            id.name(),
+            fx.missile,
+            fx.impact,
+            fx.area,
+            fx.state
+        );
+    }
+    let _ = writeln!(out, "XP küresi: {:?}", art.orb_model);
     let _ = writeln!(out, "\n== Pasifler ==");
     for p in PassiveId::ALL {
         let d = p.def();
@@ -319,19 +760,27 @@ fn write_report(art: &WowArt) {
         let _ = writeln!(out, "[{}] {:?}: {ok}", d.name, d.icon_spell);
     }
     let _ = writeln!(out, "\n== Arayüz dokuları ==");
-    for path in [
-        STATUS_BAR,
-        PLATE_BORDER,
-        DIALOG_BACKGROUND,
-        TOOLTIP_BACKGROUND,
-        SLOT_FRAME,
-    ] {
+    for path in UI_TEXTURES
+        .iter()
+        .chain(PAPERDOLL.iter())
+        .chain(SLOT_PICTURES.iter())
+        .chain(std::iter::once(&CLOSE_BUTTON))
+    {
         let ok = if art.ui.contains_key(path) {
             "var"
         } else {
             "YOK"
         };
         let _ = writeln!(out, "{path}: {ok}");
+    }
+    let _ = writeln!(out, "\n== Kart resimleri (yükleme ekranları) ==");
+    for (key, _) in SCENE_NEEDLES {
+        let ok = if art.scenes.contains_key(key) {
+            "var"
+        } else {
+            "YOK"
+        };
+        let _ = writeln!(out, "{key}: {ok}");
     }
     match std::fs::write(REPORT_FILE, &out) {
         Ok(()) => {
@@ -347,6 +796,26 @@ fn write_report(art: &WowArt) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scenes_are_picked_by_name_and_cropped() {
+        let paths = vec![
+            "Interface\\Glues\\LoadingScreens\\LoadScreenKalimdor.blp".to_string(),
+            "Interface\\Glues\\LoadingScreens\\LoadScreenMoltenCore.blp".to_string(),
+        ];
+        assert_eq!(
+            pick_scene(&paths, &["blackrock", "moltencore"]),
+            Some(paths[1].as_str())
+        );
+        assert_eq!(pick_scene(&paths, &["naxxramas"]), None);
+        // A square file: the cut stays in its 4:3 top and keeps the aspect.
+        let r = scene_crop(1024.0, 1024.0, 1.2, 0.7);
+        assert!(r.min.y >= 0.0 && r.max.y <= 768.0, "{r:?}");
+        assert!((r.width() / r.height() - 1.2).abs() < 1e-3);
+        assert_eq!(CardArt::parse("Ağaç"), Some(CardArt::Talent));
+        assert_eq!(CardArt::parse("yukleme"), Some(CardArt::Loading));
+        assert_eq!(CardArt::parse("x"), None);
+    }
 
     #[test]
     fn rank_one_lowest_id_wins() {
@@ -409,6 +878,60 @@ mod tests {
             Some(846),
             "still a pick"
         );
+    }
+
+    #[test]
+    fn effects_are_picked_by_role() {
+        let paths: HashMap<u32, &str> = [
+            (1, "Spells\\Frostbolt.mdx"),
+            (2, "Spells\\Ice_Precast_Low_Hand.mdx"),
+            (3, "Spells\\Ice_ImpactDD_Med_Chest.mdx"),
+            (4, "Spells\\Frost_Nova_area.mdx"),
+            (5, "Spells\\Frost_Nova_state.mdx"),
+            (6, "Spells\\Ice_Precast_Uber_Head.mdx"),
+        ]
+        .into_iter()
+        .collect();
+        let kits: HashMap<u32, Vec<(u16, u32)>> = [
+            (10, vec![(0x15, 2), (0x16, 2)]),
+            (11, vec![(TAG_CHEST, 3)]),
+            (12, vec![(TAG_FEET, 4)]),
+            (13, vec![(0x14, 6), (u16::MAX, 5)]),
+        ]
+        .into_iter()
+        .collect();
+        let path = |id: u32| paths.get(&id).map(|s| s.to_string());
+        let kit = |k: u32| kits.get(&k).cloned().unwrap_or_default();
+        let bolt = VisualStages {
+            precast: 10,
+            cast: 10,
+            impact: 11,
+            missile_model: 1,
+            ..Default::default()
+        };
+        let no_sound = |_: u32| None;
+        let fx = visual_fx(&bolt, &path, &kit, &no_sound);
+        assert_eq!(fx.missile.as_deref(), Some("Spells\\Frostbolt.mdx"));
+        assert_eq!(
+            fx.impact.as_deref(),
+            Some("Spells\\Ice_ImpactDD_Med_Chest.mdx")
+        );
+        assert_eq!(fx.area, None, "hand effects are not a ground burst");
+        let nova = VisualStages {
+            cast: 12,
+            state: 13,
+            ..Default::default()
+        };
+        let fx = visual_fx(&nova, &path, &kit, &|k| (k == 12).then_some(77));
+        assert_eq!(fx.cast_sound, Some(77));
+        assert_eq!(fx.area.as_deref(), Some("Spells\\Frost_Nova_area.mdx"));
+        assert_eq!(
+            fx.state.as_deref(),
+            Some("Spells\\Frost_Nova_state.mdx"),
+            "world slot first"
+        );
+        let merged = merge_fx([SkillFx::default(), fx.clone()].into_iter());
+        assert_eq!(merged, fx);
     }
 
     #[test]

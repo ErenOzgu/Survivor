@@ -92,7 +92,10 @@ pub(super) fn pause_menu(
     buttons: Query<(&Interaction, &Choice), Changed<Interaction>>,
     main_menu: Res<super::menu::MainMenu>,
     inv: Res<super::gear_ui::Inventory>,
-    loot: Res<super::gear_ui::LootScreen>,
+    (loot, craft): (
+        Res<super::gear_ui::LootScreen>,
+        Res<super::crafting_ui::CraftScreen>,
+    ),
     mut restart: MessageWriter<RestartRun>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -105,6 +108,7 @@ pub(super) fn pause_menu(
             && !main_menu.is_open()
             && !inv.is_open()
             && !loot.is_open()
+            && !craft.is_open()
         {
             clock_v.pause();
             menu.open = Some(spawn_menu(

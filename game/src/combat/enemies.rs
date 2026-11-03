@@ -33,6 +33,7 @@ impl Plugin for EnemiesPlugin {
                     enemy_attacks,
                     move_enemy_bolts,
                     animate_enemies,
+                    tick_bleeds,
                 )
                     .chain()
                     .in_set(CombatSet::Act)
@@ -40,10 +41,15 @@ impl Plugin for EnemiesPlugin {
             )
             .add_systems(
                 Update,
-                (kill_enemies, tick_corpses).in_set(CombatSet::Resolve),
+                (death_passives, kill_enemies, tick_corpses)
+                    .chain()
+                    .in_set(CombatSet::Resolve),
             );
     }
 }
+
+/// Enemies closer than this to the hero collide with the world.
+const COLLIDE_WITHIN: f32 = 32.0;
 
 /// One enemy. Its `Transform` is its feet on the terrain.
 #[derive(Component, Debug)]
@@ -64,6 +70,12 @@ pub struct Enemy {
     pub slow: f32,
     /// Seconds left of the "just hit" pulse.
     pub hit_flash: f32,
+    /// Seconds left of a critical hit's knock-back.
+    pub knock: f32,
+    /// A bleed (Kanatan Ölüm): damage per second, seconds left, and the next tick's wait.
+    pub bleed_dps: f32,
+    pub bleed_left: f32,
+    pub bleed_tick: f32,
     /// Hit since its animation last looked (a flinch may play).
     pub just_hit: bool,
     /// Seconds to its next attack swing while touching the hero.
@@ -71,6 +83,8 @@ pub struct Enemy {
     /// Damage taken this frame (for the damage numbers), and whether any of it was a crit.
     pub took: f32,
     pub took_crit: bool,
+    /// The skill that hit it last this frame (the number's colour).
+    pub took_skill: Option<crate::content::SkillId>,
     /// Multiplier on its attacks' damage (the wave's), for bolts and blasts.
     pub damage_mul: f32,
     /// Seconds to its next shot (ranged kinds).
@@ -94,6 +108,11 @@ impl Enemy {
             slow_left: 0.0,
             slow: 0.0,
             hit_flash: 0.0,
+            knock: 0.0,
+            took_skill: None,
+            bleed_dps: 0.0,
+            bleed_left: 0.0,
+            bleed_tick: 0.0,
             just_hit: false,
             attack_cd: 0.0,
             took: 0.0,
@@ -114,7 +133,10 @@ impl Enemy {
         self.health = rules::apply_damage(self.health, damage).0;
         self.took += before - self.health;
         self.took_crit |= crit;
-        self.hit_flash = 0.12;
+        self.hit_flash = HIT_FLASH;
+        if crit {
+            self.knock = KNOCK_SECS;
+        }
         self.just_hit = true;
     }
 
@@ -147,15 +169,23 @@ fn spawn_waves(
     assets: Res<Placeholders>,
     heroes: Query<&Transform, With<Hero>>,
     enemies: Query<(), With<Enemy>>,
+    bosses: Query<&super::bosses::Boss, With<Enemy>>,
 ) {
     let Ok(hero) = heroes.single() else {
         return;
     };
+    // A dungeon has packs, not waves (`dungeon`).
+    if super::dungeon::in_dungeon() {
+        return;
+    }
     spawner.next -= time.delta_secs();
     if spawner.next > 0.0 {
         return;
     }
-    let wave = waves::wave_at(run.time);
+    // A boss in the fight (a mini or the map boss; a guarding elite once woken) calms the waves.
+    let fighting = bosses.iter().any(|b| b.awake);
+    let wave = waves::calmed(waves::wave_at(run.time), fighting);
+    let zone_mul = crate::content::zones::current().def().level_mul;
     spawner.next = wave.interval;
     let alive = enemies.iter().count() as u32;
     if alive >= wave.max_alive {
@@ -180,8 +210,8 @@ fn spawn_waves(
         };
         let e = commands
             .spawn((
-                Name::new(kind.def().name),
-                Enemy::new(kind, wave.health_mul, wave.damage_mul),
+                Name::new(kind.name()),
+                Enemy::new(kind, wave.health_mul * zone_mul, wave.damage_mul * zone_mul),
                 // Height is fixed by `move_enemies` once the terrain under it is known.
                 Transform::from_translation(center + jitter),
                 Visibility::default(),
@@ -191,15 +221,31 @@ fn spawn_waves(
     }
 }
 
+/// The "just hit" pulse: seconds, and how much bigger the model swells at its start.
+const HIT_FLASH: f32 = 0.14;
+const HIT_SWELL: f32 = 0.2;
+/// A critical hit pushes a common enemy back this long, this fast (yards per second); bosses
+/// stand.
+const KNOCK_SECS: f32 = 0.14;
+const KNOCK_SPEED: f32 = 7.0;
+
+/// The model's size while the hit pulse runs out: a quick swell that eases back.
+pub fn hit_scale(flash_left: f32) -> f32 {
+    1.0 + HIT_SWELL * (flash_left / HIT_FLASH).clamp(0.0, 1.0)
+}
+
 /// Enemies run at the hero, push apart a little, follow the ground and face where they go.
 /// One left far behind is put back on the ring.
+#[allow(clippy::too_many_arguments)]
 fn move_enemies(
     time: Res<Time>,
     mut rng: ResMut<CombatRng>,
     streamer: Option<Res<TerrainStreamer>>,
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     heroes: Query<&Transform, (With<Hero>, Without<Enemy>)>,
-    mut enemies: Query<(&mut Transform, &mut Enemy)>,
+    mut enemies: Query<(&mut Transform, &mut Enemy, Has<super::bosses::Boss>)>,
+    world: benilla_world::collision::WorldCollision,
+    mut shape: Local<Option<avian3d::prelude::Collider>>,
 ) {
     let Ok(hero) = heroes.single() else {
         return;
@@ -210,17 +256,20 @@ fn move_enemies(
     // Crowding: a cheap pairwise push on a snapshot (the waves cap the count at a few hundred).
     let snapshot: Vec<(Vec3, f32)> = enemies
         .iter()
-        .map(|(xf, e)| (xf.translation, e.radius))
+        .map(|(xf, e, _)| (xf.translation, e.radius))
         .collect();
 
     let mut cache = None;
-    for (i, (mut xf, mut e)) in enemies.iter_mut().enumerate() {
+    let dungeon = super::dungeon::in_dungeon();
+    for (i, (mut xf, mut e, boss)) in enemies.iter_mut().enumerate() {
         e.frozen = (e.frozen - dt).max(0.0);
         e.slow_left = (e.slow_left - dt).max(0.0);
         e.hit_flash = (e.hit_flash - dt).max(0.0);
+        let knocked = e.knock > 0.0 && !boss;
+        e.knock = (e.knock - dt).max(0.0);
 
         let mut pos = xf.translation;
-        if rules::flat_dist(pos, hero_pos) > LEASH {
+        if rules::flat_dist(pos, hero_pos) > LEASH && !dungeon {
             let angle = rng.0.range(0.0, std::f32::consts::TAU);
             pos = rules::ring_point(hero_pos, angle, SPAWN_RING_MAX);
         }
@@ -248,11 +297,26 @@ fn move_enemies(
             }
         }
         let mut new_pos = next + push.clamp_length_max(speed.max(1.0) * dt);
+        if knocked {
+            let away = (pos - hero_pos).with_y(0.0).normalize_or_zero();
+            new_pos = pos + away * KNOCK_SPEED * dt;
+        }
+        // Walls stop enemies near the hero too (far ones are off screen and only cost).
+        if rules::flat_dist(pos, hero_pos) < COLLIDE_WITHIN {
+            let shape = shape.get_or_insert_with(super::collide::body);
+            new_pos = pos + super::collide::swept_move(&world, shape, pos, new_pos - pos);
+        }
 
         let ground = match (&streamer, &adt_tiles) {
             (Some(s), Some(a)) => terrain_height_under_cached(s, a, new_pos, &mut cache),
             _ => None,
         };
+        // In a dungeon the floor is a building's: a ray finds it.
+        let ground = ground.or_else(|| {
+            dungeon
+                .then(|| crate::game::floor_under(&world, new_pos.with_y(xf.translation.y)))
+                .flatten()
+        });
         new_pos.y = ground.unwrap_or(hero_pos.y);
 
         let dir = (hero_pos - new_pos).with_y(0.0);
@@ -260,7 +324,7 @@ fn move_enemies(
             xf.rotation = Quat::from_rotation_y(yaw);
         }
         xf.translation = new_pos;
-        xf.scale = Vec3::splat(if e.hit_flash > 0.0 { 1.15 } else { 1.0 });
+        xf.scale = Vec3::splat(hit_scale(e.hit_flash));
     }
 }
 
@@ -447,6 +511,83 @@ pub struct Corpse {
     ground: f32,
 }
 
+/// Seconds between a bleed's hits.
+const BLEED_TICK: f32 = 0.5;
+
+/// The death passives, before the dead are cleared: a dying enemy bursts (Patlayıcı Ölüm) and
+/// leaves a bleed on those near it (Kanatan Ölüm). A burst's kills do not burst again.
+fn death_passives(
+    run: Res<Run>,
+    mut commands: Commands,
+    art: Res<super::art::WowArt>,
+    assets: Res<Placeholders>,
+    mut budget: ResMut<super::fx::FxBudget>,
+    mut enemies: Query<(&Transform, &mut Enemy)>,
+) {
+    use crate::content::passives::{self as pv, PassiveId};
+    let burst = PassiveId::Volatile.bonus(run.passives.level_of(PassiveId::Volatile));
+    let bleed = PassiveId::Bloodletting.bonus(run.passives.level_of(PassiveId::Bloodletting));
+    if burst <= 0.0 && bleed <= 0.0 {
+        return;
+    }
+    let dying: Vec<(Vec3, f32, f32)> = enemies
+        .iter()
+        .filter(|(_, e)| !e.alive() && e.xp > 0)
+        .map(|(xf, e)| (xf.translation, e.max_health, e.radius))
+        .collect();
+    if dying.is_empty() {
+        return;
+    }
+    for (at, max_health, radius) in &dying {
+        if burst > 0.0 {
+            super::fx::burst(
+                &mut commands,
+                &mut budget,
+                &art,
+                &assets,
+                crate::content::SkillId::Fireball,
+                super::fx::BurstKind::Impact,
+                *at + Vec3::Y * 0.8,
+                0.0,
+            );
+        }
+        for (xf, mut e) in &mut enemies {
+            if !e.alive() {
+                continue;
+            }
+            let d = rules::flat_dist(xf.translation, *at) - e.radius - radius;
+            if burst > 0.0 && d <= pv::VOLATILE_RADIUS {
+                e.strike(max_health * burst, false);
+            }
+            if bleed > 0.0 && d <= pv::BLEED_RADIUS {
+                let dps = e.max_health * bleed / pv::BLEED_SECS;
+                e.bleed_dps = e.bleed_dps.max(dps);
+                e.bleed_left = pv::BLEED_SECS;
+            }
+        }
+    }
+}
+
+/// Bleeds hurt every half second while they run.
+fn tick_bleeds(time: Res<Time>, mut enemies: Query<&mut Enemy>) {
+    let dt = time.delta_secs();
+    for mut e in &mut enemies {
+        if e.bleed_left <= 0.0 {
+            continue;
+        }
+        e.bleed_left -= dt;
+        e.bleed_tick -= dt;
+        if e.bleed_tick <= 0.0 {
+            e.bleed_tick += BLEED_TICK;
+            let hit = e.bleed_dps * BLEED_TICK;
+            e.strike(hit, false);
+        }
+        if e.bleed_left <= 0.0 {
+            e.bleed_dps = 0.0;
+        }
+    }
+}
+
 /// Dead enemies leave an XP orb. One with a model becomes a [`Corpse`]; a placeholder is removed.
 #[allow(clippy::type_complexity)]
 pub(super) fn kill_enemies(
@@ -518,6 +659,8 @@ mod system_params {
         init(&mut world, spawn_waves);
         init(&mut world, move_enemies);
         init(&mut world, kill_enemies);
+        init(&mut world, death_passives);
+        init(&mut world, tick_bleeds);
         init(&mut world, animate_enemies);
         init(&mut world, tick_corpses);
         init(&mut world, enemy_attacks);

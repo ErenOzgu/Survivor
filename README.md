@@ -32,7 +32,12 @@ oynanabilir bir savaş döngüsü kurar:
   ölünce ölüm animasyonuyla düşer, biraz yerde kalır, sonra toprağa gömülür. Kahraman büyü
   attıkça büyü atma animasyonu yapar. Model yüklenene kadar (ya da veri yoksa) eski yer tutucu
   şekiller görünür: kobold kahverengi kapsül, kurt gri uzun kutu, örümcek mor yassı küre.
-- Büyüler hâlâ **yer tutucu**: renkli küre/ok, yer büyüleri yarı saydam diskler.
+- **Büyü efektleri WoW'dan:** her skill'in füzesi, çarpma efekti, yer alanı ve patlaması
+  istemcinin büyü görsel tablolarından (`SpellVisual`) seçilen `Spells\*.mdx` modelleri,
+  parçacıkları ve izleriyle çizilir: Frostbolt'un buz oku, Fireball/Pyroblast'ın ateş topu ve
+  patlaması, Arcane Missile füzeleri, Frost Nova'nın buz halkası ve dondurduğu düşmanlardaki buz,
+  Blizzard ve Flamestrike alanları, Arcane Explosion. XP küreleri yeşil bir büyü küresi. Model
+  bulunamazsa renkli yer tutucu şekiller kalır; kalabalık sahnede efekt sayısı sınırlıdır.
 
 ### Mage skill'leri
 
@@ -47,12 +52,126 @@ oynanabilir bir savaş döngüsü kurar:
 | Arcane Explosion | Etrafa patlama dalgası | Hasar 8 → 28 |
 | Blink | Can %35'in altındayken ya da 4+ düşman dibindeyken kendiliğinden ışınlanır, kısa süre hasar almaz | Bekleme 20 → 7 sn |
 
+### Ses, çarpışma, görseller
+
+- **Ses:** büyüler atılırken ve çarparken kendi seslerini çalar (istemcinin büyü kitlerindeki
+  `SoundEntries`), düşmanlar ölürken kendi ölüm seslerini (`CreatureSoundData`), arka planda
+  bulunulan bölgenin müziği (Elwynn'de Elwynn müziği). Dosyalar senin istemcinin WAV/MP3'leri.
+  Ses seviyesi ayar dosyasında: `ses=0.6`, `muzik=0.35` (0–1). `RNS_MUTE=1` sesi kapatır. Ses
+  cihazı ya da WoW verisi yoksa oyun sessiz çalışır.
+- **Çarpışma:** kahraman ve yakındaki düşmanlar binalardan, duvarlardan, ağaçlardan geçmez;
+  çarpınca kenarı boyunca kayar. Yokuşlar engel değildir.
+- **Modeller:** Defias Lideri karakter modelli NPC olarak çizilir (istemcide hazır dokusu
+  "VanCleef"/"Defias" olan görünüm). Boss sandığı ve ganimet keseleri istemcinin kendi nesne
+  modelleri (`GameObjectDisplayInfo`). Giyilen başlık artık kafada görünür (kask modeli ırka ve
+  cinsiyete göre). Portal istemcinin kendi büyücü portalı nesnesi (bulunamazsa dönen halka).
+- **Seviye kartları:** koleksiyon kartı düzeninde: oval resmin önünde büyünün ikonu, köşede
+  seviye taşı, isim şeridi, nadirlik taşı (beyaz yükseltme, mavi yeni skill, mor yeni pasif,
+  turuncu evrim), parşömen üstünde açıklama, altta okul (Buz/Ateş/Arkan/Pasif/İksir). Üstüne
+  gelince büyür ve parlar. Kartın resmi ayar dosyasında `kart=` ile seçilir: `sahne` (varsayılan: skill kartlarında
+  kahramanın o büyüyü atarken canlı görüntüsü; kahramanın bir kopyası dünyanın altında durur,
+  küçük bir kamera çeker; pasif ve iksir kartlarında yükleme ekranı resmi), `yukleme` (
+  istemcinin yükleme ekranlarından, Buz'a Naxxramas, Ateş'e Molten Core, Arkan'a Dire Maul) ya
+  da `agac` (büyücü yetenek ağacı resimleri). `RNS_CARD_ART` aynı işi görür.
+
+### Görünüm
+
+- **Arayüz** istemcinin kendi çerçeveleriyle: sol üstte oyuncu çerçevesi (büyücü portresi, seviye,
+  can, XP), altta grifonlu aksiyon çubuğu (üstünde XP şeridi; skill ikonları, seviyeleri, dolum
+  gölgesi), üstte zaman ve öldürme plakası. Doku bulunamazsa düz paneller çıkar.
+- **Küçük harita** sağ üstte: bulunulan yerin istemcideki harita resmi, WoW halkası içinde, kuzey
+  yukarıda. Kahraman sarı ok; düşmanlar kırmızı, bosslar kurukafa, sandık altın, portal mor nokta.
+- **Vuruş hissi:** vurulan düşman bir an şişer, kritik vuruş sıradan düşmanı geri iter (bosslar
+  durur). Kahraman vurulunca ve kritiklerde kamera sarsılır.
+- **Hasar sayıları** vuran okulun renginde (buz mavi, ateş turuncu, arkan mor), büyük çıkıp oturur,
+  yay çizerek yükselir; kritik daha büyük ve "!" ile.
+- **Seviye atlama:** kahramanın üstünde WoW'un altın ışık sütunu (`LevelUp.mdx`) ve sesi. Can
+  %35'in altına inince ekran kenarları kırmızı atar, can azaldıkça hızlanır.
+- **Hareket:** kahraman tuş değişince yeni yöne yumuşakça geçer, gövdesi gittiği yöne döner (8
+  yöne kilitli değil). **Sağ fare basılıyken** fare kamerayı ve kahramanı çevirir (imleç gizlenir),
+  iki tuş birden basılıysa ileri koşar; WoW'daki gibi.
+- **Cooldownlar (Z, X, C)**, aksiyon çubuğunun 7–9. yuvalarında, WoW ikonları ve efektleriyle:
+  - **Z, Bloodlust:** koşu başına bir kez; 40 sn skiller %35 hızlı dolar, %25 hızlı koşarsın.
+  - **X, Ice Barrier** (savunma, 5 dk): 20 sn en yüksek canının %60'ı kadar hasarı kalkan emer.
+  - **C, Arcane Power** (saldırı, 5 dk): 15 sn büyüler %50 fazla vurur.
+  Dolarken yuva kararır ve geri sayar, çalışırken altın çerçeve alır, harcanınca griye döner.
+- **Ana menü:** üstte WoW'un başlık yazı tipiyle (Morpheus, istemciden) "Rnsurvivors"; üç panel:
+  sınıf (Büyücü, diğer sınıflar ileride için soluk; büyü havuzu), karakter (canlı görüntü, giyilen
+  eşyalar, eşya ve talentlardan gelen güçler, rekorlar, Karakter/Talentlar düğmeleri) ve bölge
+  (Elwynn Ormanı ve bossların geliş saatleri; diğer bölgeler "Yakında"); altta büyük "Elwynn
+  Ormanı'na gir" düğmesi. Menü açıkken oyun içi arayüz gizlenir.
+- **Dungeon: Deadmines** (Westfall bitince açılır; ana menünün bölge listesinde). Ayrı bir harita
+  (Map.dbc 36), istemcinin kendi Deadmines'ı; zemin binanın kendisi (aşağı ışınla bulunur). Dalga
+  yok: önünde 4–6 düşmanlık paketler bekler (görüş hattında, zeminde), yaklaşınca ya da birine
+  vurunca bütün paket gelir. Her temizlenen paket boss saatini ilerletir: ~5 pakette ilk boss,
+  ~10'da ikincisi, ~15'te Defias Lideri. Elit yok. İlk deneme: giriş noktası ve paket yerleri
+  oyunda denenecek.
+- **Sınıflar:** Büyücü, Kara Büyücü (Warlock) ve Rahip (Priest), ana menünün sınıf ızgarasından
+  seçilir. Hepsi aynı skill rollerini oynar (yavaşlatan ok, patlayan ok, yaylım, donduran nova,
+  iki yer alanı, çevre patlaması, kaçış, üç evrim), sayılar dengede kalır; ama her sınıf kendi WoW
+  büyüleriyle: Kara Büyücü Shadow Bolt, Soul Fire, Searing Pain, Howl of Terror, Rain of Fire,
+  Immolate, Hellfire; Rahip Smite, Holy Fire, Mind Flay, Psychic Scream, Shadow Word: Pain,
+  Starshards, Holy Nova, Fade. Adlar, ikonlar, efektler ve okul adları sınıfa göre değişir.
+  Savaşçı, Paladin gibi yakın dövüşçüler ileride (ayrı bir sistem ister).
+- **Bölgeler:** Elwynn Ormanı, Westfall, Redridge Dağları, Duskwood. Ana menüdeki bölge
+  listesinden seçilir; biri bitirilince (portal) sonraki açılır. Her bölgenin kendi başlangıç yeri,
+  istemcideki o bölgenin yaratık modelleri (Westfall: murloc, çakal, akbaba, hasat golemi;
+  Redridge: gnoll, kurt, tarantula, ejder yavrusu; Duskwood: iskelet, kurtadam, örümcek,
+  hortlak), kendi boss adları ve daha zor dövüşü (can ve hasar: ×1.35, ×1.75, ×2.2) vardır.
+  Kurallar (dalgalar, roller, boss saatleri) aynıdır. Başlangıç ve elit noktaları oyunda
+  denenecek; `RNS_START` kendi noktasını korur.
+- **Kart ekranı** oyunu artık dondurmaz, savaşı bekletir: düşmanlar, büyüler ve kahraman durur,
+  modeller ve efektler oynamaya devam eder (kartlardaki canlı sahneler için).
+- **Meslekler (P, ya da ana menüde 4):**
+  - **Malzemeler** düşmanlardan düşer, hemen kayda girer: kobold bakır cevheri ve keten kumaş,
+    kurt eti, örümcek bacağı, falcı keten ve garip toz; bosslar toz, bakır ve keten bırakır.
+  - **Aşçılık:** Kurt Kebabı (+25 can), Örümcek Çorbası (+%10 koşu hızı), Avcı Yahnisi (+%10
+    büyü hasarı). Pişirilen yemeklerden biri "sonraki koşuya" seçilir, koşu başında yenir, buffı
+    o koşu boyunca sürer.
+  - **Demircilik:** giyilen eşya dövülür (+1'den +3'e), her seviye bonuslarını %15 güçlendirir;
+    her seviye daha çok bakır ve keten ister.
+  - **Enchant:** giyilen eşyaya bir enchant (Güç, Keskinlik, Dayanıklılık, Çeviklik, Bilgelik);
+    yenisi eskisinin yerine geçer.
+- **Takı yuvaları:** kolye, pelerin, yüzük ve tılsım da düşer ve giyilir (karakter penceresinde
+  yerlerinde; ikonları istemciden).
+- **Ölüm pasifleri** (seviye kartlarında):
+  - **Patlayıcı Ölüm:** ölen düşman patlar, en yüksek canının %15'i (seviye başına) kadar
+    hasarı 4 yarda içindekilere verir. Patlamanın öldürdükleri yeniden patlamaz.
+  - **Kanatan Ölüm:** ölen düşman 5 yarda içindekileri kanatır; 5 sn'de kendi en yüksek
+    canlarının %8'i (seviye başına) kadar hasar alırlar.
+- **Boss pusulası** (küçük haritanın altında): hedefe dönen küçük bir ok, elit için yanında
+  canlı 3D portresi (bossun modelinin bir kopyası kahramanın altında, dünyadan görünmeyen bir
+  yerde durur, küçük bir kamera başını çeker).
+- **Hareket:** Space zıplar; S geri geri yürür (%60 hızla, ileri bakarak).
+- **Karakter penceresi (I):** WoW'un kendi karakter penceresi (dokuları istemciden): solda ve
+  sağda eşya yuvaları (oyunun 6 yuvası dolu, yüzük/kolye/pelerin gibi diğerleri ileride için soluk),
+  ortada karakterin canlı görüntüsü (pencere açıkken önünde duran küçük bir kamerayla), altında iki
+  istatistik kutusu; yanında çanta ve seçilen eşyanın kartı.
+- **Düşman can barları** WoW 1.12 nameplate'i: istemcinin `Nameplate-Border` çerçevesi, içinde
+  kırmızı can barı, üstünde adı, sağdaki yuvada seviye. Hasar alan düşmanda görünür.
+- **Çökme kaydı:** oyun çökerse hata `%APPDATA%\Rnsurvivors\rnsurvivors-cokme.txt`'e yazılır;
+  launcher son oyunun bütün konsol çıktısını `rnsurvivors-log.txt`'te tutar. Bir sistem hatası
+  (örneğin az önce ölen düşmana giden bir komut) artık oyunu kapatmaz, loga yazar
+  (`RNS_STRICT=1` eski davranış).
+- **Dünya:** kahramanın ve düşmanların altında yumuşak gölge. Koşu öğleden sonra başlar, bosslar
+  gelirken güneş batar.
+
+Ayar dosyasında (`%APPDATA%\Rnsurvivors\ayarlar.txt`):
+
+| Anahtar | Değer | Ne yapar |
+|---|---|---|
+| `sarsinti` | `0`–`1` (varsayılan `1`) | Kamera sarsıntısı; `0` kapatır |
+| `saat` | `akis` (varsayılan), `gunduz`, `gece`, `18:30` | Günün saati |
+| `kamera` | `yakin`, `orta` (varsayılan), `uzak` | Kamera uzaklığı ve açısı |
+| `kart` | `sahne` (varsayılan), `yukleme`, `agac` | Seviye kartlarının resmi |
+| `dokum` | `1` | Açılışta istemcideki bütün büyüleri (ad, numara, ikon, efekt modelleri) `rnsurvivors-buyuler.txt`'e yazar; efekt seçmek için |
+
 ### Düşmanlar
 
 | Düşman | Ne zaman | Ne yapar |
 |---|---|---|
 | Kobold | baştan | Yavaş, kalabalık; değince hasar |
-| Kurt | 0:45 | Hızlı, sürüyle gelir |
+| Kurt | 1:15 | Hızlı, sürüyle gelir |
 | Örümcek | 2:00 | Dayanıklı, değince çok acıtır |
 | **Kobold Falcı** | 3:00 | Uzakta durur (≈10 yard), yaklaşınca geri çekilir; yavaş mor büyü fırlatır (koşarak kaçılır) |
 | **Fitilci Kobold** | 4:30 | Hızlı koşar, dibine gelince fitili yakar: yerde kırmızı daire büyür, 0,9 sn sonra patlar. Kendini patlatırsa XP vermez; önce öldür ya da daireden çık |
@@ -274,8 +393,7 @@ değil; git'e girmez. Bir sorun olursa bu dosyayı paylaşmak yeterli.
   sırasında açılınca oyun durur; ana menüden de açılır.
 - **Karakterde görünür:** giyilen göğüs, eller, bacaklar, ayaklar ve silah kahramanın WoW
   modelinde görünür. Görünüm, istemcinin o yuvaya uyan `ItemDisplayInfo` satırlarından eşyanın
-  kendine has numarasıyla seçilir; ikonu da o satırdan gelir. Başlık şimdilik görünmez (modeller
-  kaskı henüz kafaya takmıyor).
+  kendine has numarasıyla seçilir; ikonu da o satırdan gelir. Başlık da kafada görünür.
 - Eşyalar ve giyilenler kayıt dosyasında tutulur.
 
 ### Talentlar (Aşama 5)
@@ -345,6 +463,8 @@ kürelerini toplamak.
 | `RNS_AUTOPLAY` | `1` | Test: oyun kendi kendine oynar (kaçar, küre toplar, kart seçer) ve her 15 sn'de `rnsurvivors-denge.csv`'ye bir satır yazar; denge ölçümü için |
 | `RNS_SPEEDUP` | `2` | `RNS_AUTOPLAY` ile: oyun saati bu kat hızlı akar |
 | `RNS_BALANCE_LOG` | `denge.csv` | `RNS_AUTOPLAY`'in yazdığı dosya |
+| `RNS_MUTE` | `1` | Sesi kapatır |
+| `RNS_CARD_ART` | `yukleme` / `agac` | Seviye kartlarının resmi |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |

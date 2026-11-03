@@ -60,6 +60,22 @@ pub fn creature_displays_in_folder(data: &ModelData, folder: &str) -> Vec<u32> {
     test_spawn::displays_by_folder(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), folder)
 }
 
+/// Creature displays with a skin whose model path holds `needle` (e.g. `spider`).
+pub fn creature_displays_matching(data: &ModelData, needle: &str) -> Vec<u32> {
+    let Some(tables) = data.tables.as_ref() else {
+        return Vec::new();
+    };
+    let rows: Vec<(u32, String, bool)> = tables
+        .creatures
+        .display_models()
+        .filter_map(|(id, _)| {
+            let m = tables.creatures.model(id)?;
+            Some((id, m.model_path, m.textures[0].is_some()))
+        })
+        .collect();
+    test_spawn::displays_matching(rows.iter().map(|(id, p, s)| (*id, p.as_str(), *s)), needle)
+}
+
 /// Rebuilds an entity's model for a new request (the hero's gear changed): the old model goes and
 /// the new one is built as for a fresh request.
 pub fn rebuild_model(
@@ -83,11 +99,67 @@ pub fn item_look(data: &ModelData, slot: GearSlot, seed: u32) -> Option<(u32, Op
     let cat = data.tables.as_ref()?.items.as_ref()?;
     let ids = gear::slot_displays(cat.iter(), slot);
     let id = *ids.get(seed as usize % ids.len().max(1))?;
+    // The catalog's icon is already the full `Interface\\Icons\\…` path.
     let icon = cat
         .get(id)
         .and_then(|d| d.icon.clone())
-        .map(|i| format!("Interface\\Icons\\{i}"));
+        .map(|i| icon_path(&i));
     Some((id, icon))
+}
+
+/// An inventory icon's full path, whether the table gave the bare name or the whole path.
+pub fn icon_path(icon: &str) -> String {
+    if icon.to_ascii_lowercase().starts_with("interface\\") {
+        icon.to_string()
+    } else {
+        format!("Interface\\Icons\\{icon}")
+    }
+}
+
+/// Whether a model path names what we look for: contains one of `include` and none of
+/// `exclude`, ignoring case.
+pub fn path_matches(path: &str, include: &[&str], exclude: &[&str]) -> bool {
+    let p = path.to_ascii_lowercase();
+    include.iter().any(|w| p.contains(w)) && !exclude.iter().any(|w| p.contains(w))
+}
+
+/// A placed object's model (a chest, a sack) by what its path says: the lowest display id whose
+/// model matches. `None` without tables or a match.
+pub fn object_model(data: &ModelData, include: &[&str], exclude: &[&str]) -> Option<String> {
+    let objects = data.tables.as_ref()?.objects.as_ref()?;
+    objects
+        .iter()
+        .filter(|(_, path)| path_matches(path, include, exclude))
+        .min_by_key(|(id, _)| *id)
+        .map(|(_, path)| path.to_string())
+}
+
+/// A character-model NPC display whose baked look names one of `needles` (a Defias, VanCleef),
+/// the lowest id first.
+pub fn npc_display(data: &ModelData, needles: &[&str]) -> Option<u32> {
+    let creatures = &data.tables.as_ref()?.creatures;
+    let mut ids: Vec<u32> = creatures
+        .display_models()
+        .filter_map(|(id, _)| {
+            let m = creatures.model(id)?;
+            let bake = m.npc_appearance.as_ref()?.bake_name.as_deref()?;
+            path_matches(bake, needles, &[]).then_some(id)
+        })
+        .collect();
+    ids.sort_unstable();
+    // The needles are in order of preference.
+    for n in needles {
+        if let Some(id) = ids.iter().copied().find(|id| {
+            creatures
+                .model(*id)
+                .and_then(|m| m.npc_appearance)
+                .and_then(|a| a.bake_name)
+                .is_some_and(|b| b.to_ascii_lowercase().contains(n))
+        }) {
+            return Some(id);
+        }
+    }
+    None
 }
 
 /// What model an entity wants.
@@ -97,6 +169,8 @@ pub enum ModelRequest {
     Character(CharacterLook),
     /// A creature by its `CreatureDisplayInfo.dbc` id (character-model NPCs included).
     Creature { display_id: u32 },
+    /// A spell effect model (`Spells\\…mdx`), with its particles and ribbons.
+    Effect { path: String, scale: f32 },
 }
 
 /// Where an entity's model stands.
@@ -203,6 +277,30 @@ mod tests {
             .spawn((Visibility::default(), ModelPlaceholder, ChildOf(owner)))
             .id();
         (owner, child)
+    }
+
+    #[test]
+    fn icon_paths_are_not_prefixed_twice() {
+        assert_eq!(
+            icon_path("INV_Helmet_01"),
+            "Interface\\Icons\\INV_Helmet_01"
+        );
+        assert_eq!(
+            icon_path("Interface\\Icons\\INV_Helmet_01"),
+            "Interface\\Icons\\INV_Helmet_01"
+        );
+    }
+
+    #[test]
+    fn paths_match_words() {
+        let chest = "World\\Generic\\ActiveDoodads\\Chest02\\Chest02.mdx";
+        assert!(path_matches(chest, &["chest"], &["mail"]));
+        assert!(!path_matches(chest, &["sack"], &[]));
+        assert!(!path_matches(
+            "World\\Mailbox\\MailChest.mdx",
+            &["chest"],
+            &["mail"]
+        ));
     }
 
     #[test]

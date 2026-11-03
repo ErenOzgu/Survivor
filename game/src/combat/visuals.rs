@@ -46,7 +46,10 @@ pub struct Placeholders {
     pub bolt: Handle<Mesh>,
     /// A flat disc of radius 1; scale it to an area's radius.
     pub disc: Handle<Mesh>,
+    /// The XP orb: a crystal (mesh, and a material per value tier) and the soft glow under it.
     pub orb: (Handle<Mesh>, Handle<StandardMaterial>),
+    pub orb_tiers: [Handle<StandardMaterial>; 3],
+    pub orb_glow: (Handle<Mesh>, [Handle<StandardMaterial>; 3]),
     /// An enemy caster's bolt, and the red see-through material of danger zones.
     pub enemy_bolt: (Handle<Mesh>, Handle<StandardMaterial>),
     pub warn: Handle<StandardMaterial>,
@@ -58,7 +61,7 @@ pub struct Placeholders {
 }
 
 /// The model folder an enemy kind's creature display is picked from. The Defias leader is a
-/// character-model NPC with no folder of its own; it keeps its placeholder for now.
+/// character-model NPC with no folder of its own: it is found by name instead.
 pub fn model_folder(kind: EnemyKind) -> Option<&'static str> {
     match kind {
         EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => Some("Creature\\Kobold"),
@@ -66,6 +69,17 @@ pub fn model_folder(kind: EnemyKind) -> Option<&'static str> {
         EnemyKind::Spider => Some("Creature\\Spider"),
         EnemyKind::GnollChief => Some("Creature\\Gnoll"),
         EnemyKind::DefiasBoss => None,
+    }
+}
+
+/// Words a kind's model path may hold, tried when its folder has no display.
+pub fn model_needles(kind: EnemyKind) -> &'static [&'static str] {
+    match kind {
+        EnemyKind::Spider => &["spider", "tarantula"],
+        EnemyKind::Wolf => &["wolf"],
+        EnemyKind::Kobold | EnemyKind::Geomancer | EnemyKind::Sapper => &["kobold"],
+        EnemyKind::GnollChief => &["gnoll"],
+        EnemyKind::DefiasBoss => &[],
     }
 }
 
@@ -79,17 +93,63 @@ pub fn skin_index(kind: EnemyKind) -> usize {
 }
 
 /// Once the client tables are in, picks a creature display for every enemy kind.
-fn resolve_enemy_displays(mut assets: ResMut<Placeholders>, data: Option<Res<ModelData>>) {
+fn resolve_enemy_displays(
+    mut assets: ResMut<Placeholders>,
+    data: Option<Res<ModelData>>,
+    mut for_zone: Local<Option<crate::content::zones::ZoneId>>,
+) {
+    // Another zone: its creatures look different, pick again.
+    let zone = crate::content::zones::current();
+    if *for_zone != Some(zone) && assets.displays_resolved {
+        assets.displays.clear();
+        assets.displays_resolved = false;
+    }
     if assets.displays_resolved {
         return;
     }
     let Some(data) = data else { return };
+    if data.tables.is_none() {
+        return;
+    }
+    *for_zone = Some(zone);
+    // The Defias leader is a character-model NPC: found by its baked look's name.
+    if let Some(id) = models::npc_display(&data, &["vancleef", "defias"]) {
+        info!("rnsurvivors: DefiasBoss drawn with creature display {id}");
+        assets.displays.insert(EnemyKind::DefiasBoss, id);
+    }
     for kind in ALL_KINDS {
+        // The zone's own creatures first, by words in their model paths.
+        let zone_looks = crate::content::zones::enemy_looks(kind);
+        if !zone_looks.is_empty() {
+            let found = zone_looks
+                .iter()
+                .map(|n| models::creature_displays_matching(&data, n))
+                .find(|v| !v.is_empty());
+            if let Some(skins) = found {
+                let id = skins[skin_index(kind) % skins.len()];
+                info!(
+                    "rnsurvivors: {:?} in {:?} drawn with creature display {id}",
+                    kind, zone
+                );
+                assets.displays.insert(kind, id);
+                continue;
+            }
+        }
         let Some(folder) = model_folder(kind) else {
             continue;
         };
         // Kinds sharing a model folder take different skins of it.
-        let skins = models::creature_displays_in_folder(&data, folder);
+        let mut skins = models::creature_displays_in_folder(&data, folder);
+        if skins.is_empty() {
+            if let Some(found) = model_needles(kind)
+                .iter()
+                .map(|n| models::creature_displays_matching(&data, n))
+                .find(|v| !v.is_empty())
+            {
+                info!("rnsurvivors: nothing under {folder}, {kind:?} takes a model by name");
+                skins = found;
+            }
+        }
         let pick = (!skins.is_empty()).then(|| skins[skin_index(kind) % skins.len()]);
         match pick {
             Some(id) => {
@@ -123,7 +183,27 @@ fn build_placeholders(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
+    let gem = |c: [f32; 3], glow: f32| StandardMaterial {
+        base_color: Color::srgb(c[0], c[1], c[2]),
+        emissive: LinearRgba::rgb(c[0] * glow, c[1] * glow, c[2] * glow),
+        perceptual_roughness: 0.2,
+        metallic: 0.1,
+        reflectance: 0.8,
+        ..default()
+    };
+    let tiers = super::xp::ORB_TIER_COLORS.map(|c| materials.add(gem(c, 0.9)));
+    let glow_tex = images.add(super::xp::glow_image());
+    let glows = super::xp::ORB_TIER_COLORS.map(|c| {
+        materials.add(StandardMaterial {
+            base_color: Color::srgba(c[0], c[1], c[2], 0.9),
+            base_color_texture: Some(glow_tex.clone()),
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            ..default()
+        })
+    });
     let mut enemy = HashMap::new();
     for kind in ALL_KINDS {
         let d = kind.def();
@@ -170,10 +250,9 @@ fn build_placeholders(
         ball: meshes.add(Sphere::new(0.35)),
         bolt: meshes.add(Cuboid::new(0.18, 0.18, 0.8)),
         disc: meshes.add(Cylinder::new(1.0, 0.08)),
-        orb: (
-            meshes.add(Sphere::new(0.22)),
-            materials.add(unlit(Color::srgb(0.3, 1.0, 0.45))),
-        ),
+        orb: (meshes.add(super::xp::gem_mesh()), tiers[0].clone()),
+        orb_tiers: tiers,
+        orb_glow: (meshes.add(Plane3d::default().mesh().size(1.0, 1.0)), glows),
         enemy_bolt: (
             meshes.add(Sphere::new(0.3)),
             materials.add(unlit(Color::srgb(0.75, 0.4, 1.0))),

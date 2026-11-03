@@ -33,6 +33,7 @@ pub fn move_dir(input: Vec2, cam_yaw: f32) -> Vec3 {
 }
 
 /// One frame's horizontal step: `pos` moved along `dir` at `speed` for `dt` seconds.
+#[cfg(test)]
 pub fn step(pos: Vec3, dir: Vec3, speed: f32, dt: f32) -> Vec3 {
     pos + dir * speed * dt
 }
@@ -45,6 +46,63 @@ pub fn facing_yaw(dir: Vec3) -> Option<f32> {
         return None;
     }
     Some((-dir.x).atan2(-dir.z))
+}
+
+/// The hero's acceleration toward the speed and direction asked (yards per second²): a turn of
+/// the keys blends into the new direction instead of snapping between the eight.
+pub const HERO_ACCEL: f32 = 45.0;
+/// How fast the hero's body turns toward where it goes (radians per second).
+pub const HERO_TURN: f32 = 11.0;
+
+/// Walking backwards (S without W) is this much of the run speed, as in WoW.
+pub const BACKPEDAL_MUL: f32 = 0.6;
+
+/// Whether the keys walk backwards: back held, forward not.
+pub fn backpedals(input: Vec2) -> bool {
+    input.y < 0.0
+}
+
+/// A jump's take-off speed (yards per second) and the pull back down: about 1.5 yards high,
+/// some 0.85 seconds in the air, a soft arc the take-off and landing clips fit.
+pub const JUMP_SPEED: f32 = 7.4;
+pub const GRAVITY: f32 = 18.0;
+
+/// One frame of a jump: the height over the ground and the upward speed after `dt`; both end at 0
+/// on landing.
+pub fn jump_step(air: f32, rise: f32, dt: f32) -> (f32, f32) {
+    if air <= 0.0 && rise <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let rise = rise - GRAVITY * dt;
+    let air = air + rise * dt;
+    if air <= 0.0 {
+        (0.0, 0.0)
+    } else {
+        (air, rise)
+    }
+}
+
+/// `vel` moved toward `target` by at most `accel * dt`.
+pub fn approach(vel: Vec3, target: Vec3, accel: f32, dt: f32) -> Vec3 {
+    let d = target - vel;
+    let step = accel * dt;
+    if d.length() <= step {
+        target
+    } else {
+        vel + d.normalize() * step
+    }
+}
+
+/// `from` turned toward `to` (radians) by at most `max`, the short way round.
+pub fn turn_toward(from: f32, to: f32, max: f32) -> f32 {
+    let tau = std::f32::consts::TAU;
+    let mut d = (to - from) % tau;
+    if d > std::f32::consts::PI {
+        d -= tau;
+    } else if d < -std::f32::consts::PI {
+        d += tau;
+    }
+    from + d.clamp(-max, max)
 }
 
 /// The hero's height after following the ground: on terrain it stands on it; with no terrain
@@ -73,6 +131,37 @@ pub fn zoom(distance: f32, lines: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_jump_goes_up_and_lands() {
+        let (mut air, mut rise) = (0.0, JUMP_SPEED);
+        let mut peak: f32 = 0.0;
+        let mut frames = 0;
+        loop {
+            (air, rise) = jump_step(air, rise, 1.0 / 60.0);
+            peak = peak.max(air);
+            frames += 1;
+            if air == 0.0 || frames > 600 {
+                break;
+            }
+        }
+        assert!(peak > 1.2 && peak < 1.8, "{peak}");
+        assert!((40..65).contains(&frames), "{frames}");
+        assert_eq!(jump_step(0.0, 0.0, 0.1), (0.0, 0.0));
+    }
+
+    #[test]
+    fn moves_ease_and_turns_take_the_short_way() {
+        let v = approach(Vec3::ZERO, Vec3::X * 7.0, HERO_ACCEL, 0.05);
+        assert!(v.x > 0.0 && v.x < 7.0);
+        assert_eq!(approach(v, Vec3::X * 7.0, HERO_ACCEL, 10.0), Vec3::X * 7.0);
+        // From just under +pi to just over -pi is a small step, not a full turn back.
+        let pi = std::f32::consts::PI;
+        let t = turn_toward(pi - 0.1, -pi + 0.1, 1.0);
+        assert!((t - (pi + 0.1)).abs() < 1e-4, "{t}");
+        assert!((turn_toward(0.0, 2.0, 0.5) - 0.5).abs() < 1e-6);
+        assert_eq!(turn_toward(0.0, 0.3, 0.5), 0.3);
+    }
     use std::f32::consts::FRAC_PI_2;
 
     fn close(a: Vec3, b: Vec3) -> bool {

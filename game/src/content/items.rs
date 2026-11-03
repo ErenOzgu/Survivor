@@ -14,17 +14,61 @@ pub enum ItemSlot {
     Legs,
     Feet,
     Weapon,
+    /// Jewellery and the back: no model on the body, an icon only.
+    Neck,
+    Back,
+    Finger,
+    Trinket,
 }
 
 impl ItemSlot {
-    pub const ALL: [ItemSlot; 6] = [
+    pub const ALL: [ItemSlot; 10] = [
         ItemSlot::Head,
         ItemSlot::Chest,
         ItemSlot::Hands,
         ItemSlot::Legs,
         ItemSlot::Feet,
         ItemSlot::Weapon,
+        ItemSlot::Neck,
+        ItemSlot::Back,
+        ItemSlot::Finger,
+        ItemSlot::Trinket,
     ];
+
+    /// For a slot with no body model: the client icons its items wear (one picked by the look).
+    pub fn icon_names(self) -> &'static [&'static str] {
+        match self {
+            ItemSlot::Neck => &[
+                "INV_Jewelry_Necklace_01",
+                "INV_Jewelry_Necklace_02",
+                "INV_Jewelry_Necklace_03",
+                "INV_Jewelry_Necklace_04",
+                "INV_Jewelry_Necklace_05",
+            ],
+            ItemSlot::Back => &[
+                "INV_Misc_Cape_01",
+                "INV_Misc_Cape_02",
+                "INV_Misc_Cape_03",
+                "INV_Misc_Cape_04",
+                "INV_Misc_Cape_05",
+            ],
+            ItemSlot::Finger => &[
+                "INV_Jewelry_Ring_01",
+                "INV_Jewelry_Ring_02",
+                "INV_Jewelry_Ring_03",
+                "INV_Jewelry_Ring_04",
+                "INV_Jewelry_Ring_05",
+                "INV_Jewelry_Ring_06",
+            ],
+            ItemSlot::Trinket => &[
+                "INV_Jewelry_Talisman_01",
+                "INV_Jewelry_Talisman_02",
+                "INV_Jewelry_Talisman_03",
+                "INV_Jewelry_Talisman_04",
+            ],
+            _ => &[],
+        }
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -34,6 +78,10 @@ impl ItemSlot {
             ItemSlot::Legs => "Bacaklar",
             ItemSlot::Feet => "Ayaklar",
             ItemSlot::Weapon => "Silah",
+            ItemSlot::Neck => "Kolye",
+            ItemSlot::Back => "Pelerin",
+            ItemSlot::Finger => "Yüzük",
+            ItemSlot::Trinket => "Tılsım",
         }
     }
 
@@ -61,6 +109,30 @@ impl ItemSlot {
                 "Yıldız Çizmesi",
             ],
             ItemSlot::Weapon => ["Çırak Asası", "Büyücü Asası", "Arkan Asa", "Yıldız Asası"],
+            ItemSlot::Neck => [
+                "Bakır Kolye",
+                "Büyücü Kolyesi",
+                "Arkan Kolye",
+                "Yıldız Kolyesi",
+            ],
+            ItemSlot::Back => [
+                "Keten Pelerin",
+                "Büyücü Pelerini",
+                "Arkan Pelerin",
+                "Yıldız Pelerini",
+            ],
+            ItemSlot::Finger => [
+                "Bakır Yüzük",
+                "Büyücü Yüzüğü",
+                "Arkan Yüzük",
+                "Yıldız Yüzüğü",
+            ],
+            ItemSlot::Trinket => [
+                "Taş Tılsım",
+                "Büyücü Tılsımı",
+                "Arkan Tılsım",
+                "Yıldız Tılsımı",
+            ],
         }
     }
 
@@ -72,6 +144,10 @@ impl ItemSlot {
             ItemSlot::Legs => "legs",
             ItemSlot::Feet => "feet",
             ItemSlot::Weapon => "weapon",
+            ItemSlot::Neck => "neck",
+            ItemSlot::Back => "back",
+            ItemSlot::Finger => "finger",
+            ItemSlot::Trinket => "trinket",
         }
     }
 
@@ -224,17 +300,38 @@ pub struct Item {
     pub affixes: Vec<(Affix, f32)>,
     /// Picks the item's look among the client's displays for the slot.
     pub look: u32,
+    /// Blacksmithing: each level makes its bonuses stronger (`FORGE_STEP` each).
+    pub forge: u8,
+    /// Enchanting: one extra bonus.
+    pub enchant: Option<(Affix, f32)>,
 }
+
+/// The most forge levels an item takes, and how much stronger each makes its bonuses.
+pub const MAX_FORGE: u8 = 3;
+pub const FORGE_STEP: f32 = 0.15;
 
 impl Item {
     /// "Keskin Büyücü Cübbesi": the main bonus's adjective and the slot's base name for the
     /// rarity.
     pub fn name(&self) -> String {
         let base = self.slot.base_names()[self.rarity.index()];
-        match self.affixes.first() {
+        let name = match self.affixes.first() {
             Some((a, _)) => format!("{} {base}", a.adjective()),
             None => base.to_string(),
+        };
+        if self.forge > 0 {
+            format!("{name} +{}", self.forge)
+        } else {
+            name
         }
+    }
+
+    /// Its bonuses as they count: the forge's strength on the rolled ones, then the enchant.
+    pub fn effective_affixes(&self) -> Vec<(Affix, f32)> {
+        let mul = 1.0 + FORGE_STEP * self.forge as f32;
+        let mut out: Vec<(Affix, f32)> = self.affixes.iter().map(|(a, v)| (*a, v * mul)).collect();
+        out.extend(self.enchant);
+        out
     }
 
     /// Tooltip lines: rarity, slot, level, then each bonus.
@@ -245,13 +342,24 @@ impl Item {
             self.slot.name(),
             self.level
         )];
-        out.extend(self.affixes.iter().map(|(a, v)| a.line(*v)));
+        let mul = 1.0 + FORGE_STEP * self.forge as f32;
+        out.extend(self.affixes.iter().map(|(a, v)| a.line(v * mul)));
+        if self.forge > 0 {
+            out.push(format!(
+                "Dövülmüş +{} (bonuslar +%{:.0})",
+                self.forge,
+                FORGE_STEP * self.forge as f32 * 100.0
+            ));
+        }
+        if let Some((a, v)) = self.enchant {
+            out.push(format!("Enchant: {}", a.line(v)));
+        }
         out
     }
 
     /// The bonus of one kind this item gives.
     pub fn bonus(&self, affix: Affix) -> f32 {
-        self.affixes
+        self.effective_affixes()
             .iter()
             .filter(|(a, _)| *a == affix)
             .map(|(_, v)| v)
@@ -270,6 +378,12 @@ impl Item {
         for (a, v) in &self.affixes {
             s.push_str(&format!(" {}:{v}", a.key()));
         }
+        if self.forge > 0 {
+            s.push_str(&format!(" forge={}", self.forge));
+        }
+        if let Some((a, v)) = self.enchant {
+            s.push_str(&format!(" ench={}:{v}", a.key()));
+        }
         s
     }
 
@@ -280,7 +394,18 @@ impl Item {
         let level = parts.next()?.parse().ok()?;
         let look = parts.next()?.parse().ok()?;
         let mut affixes = Vec::new();
+        let (mut forge, mut enchant) = (0u8, None);
         for p in parts {
+            if let Some(n) = p.strip_prefix("forge=") {
+                forge = n.parse::<u8>().ok()?.min(MAX_FORGE);
+                continue;
+            }
+            if let Some(e) = p.strip_prefix("ench=") {
+                let (k, v) = e.split_once(':')?;
+                let v: f32 = v.parse().ok().filter(|v: &f32| v.is_finite())?;
+                enchant = Some((Affix::from_key(k)?, v));
+                continue;
+            }
             let (k, v) = p.split_once(':')?;
             let v: f32 = v.parse().ok().filter(|v: &f32| v.is_finite())?;
             affixes.push((Affix::from_key(k)?, v));
@@ -291,6 +416,8 @@ impl Item {
             level,
             affixes,
             look,
+            forge,
+            enchant,
         })
     }
 }
@@ -371,6 +498,8 @@ pub fn roll_item(rng: &mut Rng, source: Source, level: u32) -> Item {
         level,
         affixes,
         look: (rng.next_u64() % 100_000) as u32,
+        forge: 0,
+        enchant: None,
     }
 }
 
@@ -433,6 +562,8 @@ mod tests {
             level: 12,
             affixes: vec![(Affix::Crit, 0.031), (Affix::Health, 14.0)],
             look: 3,
+            forge: 0,
+            enchant: None,
         };
         assert_eq!(it.name(), "Keskin Arkan Cübbe");
         assert_eq!(it.lines()[0], "Nadir · Göğüs · seviye 12");

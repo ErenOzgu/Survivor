@@ -17,6 +17,11 @@ pub enum EnemyKind {
 }
 
 impl EnemyKind {
+    /// Its name in the zone being played.
+    pub fn name(self) -> &'static str {
+        super::zones::enemy_name(self).unwrap_or(self.def().name)
+    }
+
     /// The kinds the wave spawner draws from.
     pub const NORMAL: [EnemyKind; 5] = [
         EnemyKind::Kobold,
@@ -133,7 +138,7 @@ pub static KOBOLD: EnemyDef = EnemyDef {
 pub static WOLF: EnemyDef = EnemyDef {
     name: "Kurt",
     health: 12.0,
-    speed: 6.0,
+    speed: 5.2,
     contact_dps: 7.0,
     xp: 1,
     radius: 0.6,

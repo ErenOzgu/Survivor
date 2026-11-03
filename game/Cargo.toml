@@ -10,6 +10,9 @@ benilla-world.workspace = true
 benilla-assets.workspace = true
 benilla-formats.workspace = true
 bevy.workspace = true
+avian3d.workspace = true
+# Sound playback (WoW's own WAV/MP3 files from the player's MPQs); the version Bevy's lock carries.
+rodio = { version = "0.20", default-features = false, features = ["symphonia-wav", "symphonia-mp3"] }
 anyhow = "1"
 
 [[bin]]

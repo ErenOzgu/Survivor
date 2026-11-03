@@ -20,10 +20,14 @@ pub enum PassiveId {
     Precision,
     /// More XP from orbs.
     Wisdom,
+    /// Dying enemies burst, hurting those around them.
+    Volatile,
+    /// Dying enemies leave a bleed on those around them.
+    Bloodletting,
 }
 
 impl PassiveId {
-    pub const ALL: [PassiveId; 7] = [
+    pub const ALL: [PassiveId; 9] = [
         PassiveId::Power,
         PassiveId::Haste,
         PassiveId::Swiftness,
@@ -31,6 +35,8 @@ impl PassiveId {
         PassiveId::Attraction,
         PassiveId::Precision,
         PassiveId::Wisdom,
+        PassiveId::Volatile,
+        PassiveId::Bloodletting,
     ];
 
     pub fn def(self) -> &'static PassiveDef {
@@ -42,6 +48,8 @@ impl PassiveId {
             PassiveId::Attraction => &ATTRACTION,
             PassiveId::Precision => &PRECISION,
             PassiveId::Wisdom => &WISDOM,
+            PassiveId::Volatile => &VOLATILE,
+            PassiveId::Bloodletting => &BLOODLETTING,
         }
     }
 
@@ -55,6 +63,8 @@ impl PassiveId {
             PassiveId::Attraction => "magnet",
             PassiveId::Precision => "crit",
             PassiveId::Wisdom => "wisdom",
+            PassiveId::Volatile => "explode",
+            PassiveId::Bloodletting => "bleed",
         }
     }
 
@@ -161,6 +171,30 @@ pub static WISDOM: PassiveDef = PassiveDef {
     icon_spell: "Arcane Brilliance",
     color: [0.55, 0.7, 1.0],
 };
+
+pub static VOLATILE: PassiveDef = PassiveDef {
+    name: "Patlayıcı Ölüm",
+    desc: "Ölen düşman patlar: en yüksek canının {}'i kadar hasarı yanındakilere verir.",
+    per_level: 0.15,
+    max_level: 5,
+    icon_spell: "Explosive Trap",
+    color: [1.0, 0.45, 0.1],
+};
+
+pub static BLOODLETTING: PassiveDef = PassiveDef {
+    name: "Kanatan Ölüm",
+    desc: "Ölen düşman yanındakileri kanatır: 5 sn'de en yüksek canlarının {}'i kadar hasar.",
+    per_level: 0.08,
+    max_level: 5,
+    icon_spell: "Rend",
+    color: [0.85, 0.1, 0.15],
+};
+
+/// The burst's reach (yards, past the dying enemy's own size) and the bleed's: its reach and how
+/// long it runs.
+pub const VOLATILE_RADIUS: f32 = 4.0;
+pub const BLEED_RADIUS: f32 = 5.0;
+pub const BLEED_SECS: f32 = 5.0;
 
 #[cfg(test)]
 mod tests {

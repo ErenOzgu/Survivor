@@ -38,6 +38,24 @@ pub const EVOLUTIONS: [(SkillId, SkillId, SkillId); 3] = [
 ];
 
 impl SkillId {
+    /// Its name as the class being played calls it.
+    pub fn name(self) -> &'static str {
+        super::classes::skill_in(super::classes::current(), self)
+            .map_or(self.def().name, |s| s.name)
+    }
+
+    /// The WoW spell its icon and effects come from, for the class being played.
+    pub fn icon_spell(self) -> &'static str {
+        super::classes::skill_in(super::classes::current(), self)
+            .map_or(self.def().icon_spell, |s| s.spell)
+    }
+
+    /// Its card line, for the class being played.
+    pub fn desc(self) -> &'static str {
+        super::classes::skill_in(super::classes::current(), self)
+            .map_or(self.def().desc, |s| s.desc)
+    }
+
     pub const ALL: [SkillId; 8] = [
         SkillId::Frostbolt,
         SkillId::Fireball,

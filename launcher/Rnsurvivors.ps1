@@ -46,11 +46,21 @@ $exe = @(
     (Join-Path $root 'target\release\rnsurvivors.exe')
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
+# The whole console output of the run is also kept in rnsurvivors-log.txt beside the settings
+# (a crash's own note goes to rnsurvivors-cokme.txt there). The game writes to stderr, which
+# PowerShell would turn into errors, so they only stop the script on a real failure.
+$log = Join-Path $dir 'rnsurvivors-log.txt'
+$ErrorActionPreference = 'Continue'
 if ($exe) {
     Push-Location (Split-Path -Parent $exe)
-    try { & $exe } finally { Pop-Location }
+    try { & $exe 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log } finally { Pop-Location }
 } else {
     # Not built yet: build and run from the repository (the first build takes a while).
     Push-Location $root
-    try { cargo run --release -p rnsurvivors } finally { Pop-Location }
+    try {
+        cargo run --release -p rnsurvivors 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log
+    } finally { Pop-Location }
+}
+if (Test-Path (Join-Path $dir 'rnsurvivors-cokme.txt')) {
+    Write-Host "Cokme notu: $(Join-Path $dir 'rnsurvivors-cokme.txt')"
 }

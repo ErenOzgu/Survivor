@@ -6,27 +6,40 @@
 //! Everything waits until the hero stands on streamed ground, and while a level-up card screen
 //! is open the virtual clock is paused, so every system below sees `dt = 0`.
 
+pub mod abilities;
 pub mod art;
 pub mod autopilot;
 pub mod boss_hud;
+pub mod boss_portrait;
 pub mod boss_rules;
 pub mod bosses;
+pub mod card_scene;
 pub mod cards;
+pub mod char_view;
+pub mod collide;
+pub mod crafting_ui;
+pub mod dungeon;
 pub mod enemies;
 pub mod flat;
+pub mod fx;
 pub mod gear_ui;
 pub mod hero;
 pub mod hud;
 pub mod menu;
+pub mod minimap;
 pub mod numbers;
 pub mod pause;
 pub mod plates;
 pub mod portal;
 pub mod rules;
 pub mod save;
+pub mod screen_fx;
+pub mod shake;
 pub mod skills;
+pub mod sound;
 pub mod talent_ui;
 pub mod visuals;
+pub mod world_look;
 pub mod xp;
 
 use bevy::prelude::*;
@@ -56,6 +69,7 @@ impl Plugin for CombatPlugin {
         app.insert_resource(Run::new(&debug))
             .insert_resource(debug)
             .insert_resource(CombatRng(Rng::new(seed)))
+            .init_resource::<CardHold>()
             .add_message::<HeroDied>()
             .add_message::<RestartRun>()
             .configure_sets(
@@ -70,6 +84,17 @@ impl Plugin for CombatPlugin {
                     .chain()
                     .after(WorldStage::Input)
                     .before(WorldStage::Stream),
+            )
+            // The card screen holds the fight, not the clock: models and effects play on.
+            .configure_sets(
+                Update,
+                (
+                    CombatSet::Spawn,
+                    CombatSet::Act,
+                    CombatSet::Resolve,
+                    CombatSet::Reset,
+                )
+                    .run_if(not_held),
             )
             .add_systems(
                 Update,
@@ -100,6 +125,21 @@ impl Plugin for CombatPlugin {
                 autopilot::AutopilotPlugin,
                 gear_ui::GearUiPlugin,
                 talent_ui::TalentUiPlugin,
+                fx::FxPlugin,
+                collide::CollidePlugin,
+                sound::SoundPlugin,
+                shake::ShakePlugin,
+                world_look::WorldLookPlugin,
+                screen_fx::ScreenFxPlugin,
+                minimap::MinimapPlugin,
+            ))
+            .add_plugins((
+                abilities::AbilitiesPlugin,
+                char_view::CharViewPlugin,
+                boss_portrait::BossPortraitPlugin,
+                crafting_ui::CraftingPlugin,
+                card_scene::CardScenePlugin,
+                dungeon::DungeonPlugin,
             ));
     }
 }
@@ -137,6 +177,10 @@ pub struct Run {
     pub revive_used: bool,
     /// The talents' run-start gifts were given.
     pub start_applied: bool,
+    /// The cooldown spells (Z, X, C).
+    pub abilities: rules::AbilityState,
+    /// Dungeon packs cleared (the dungeon's boss clock).
+    pub packs_cleared: u32,
 }
 
 impl Run {
@@ -152,6 +196,8 @@ impl Run {
             xp_total: 0,
             revive_used: false,
             start_applied: false,
+            abilities: rules::AbilityState::default(),
+            packs_cleared: 0,
         }
     }
 }
@@ -226,6 +272,15 @@ pub fn parse_start_time(s: &str) -> Option<f32> {
     (secs.is_finite() && (0.0..=3600.0).contains(&secs)).then_some(secs)
 }
 
+/// While the level-up cards are up the fight waits (spawns, moves, casts, deaths), but the
+/// world clock runs, so models, effects and the cards' live scenes keep playing.
+#[derive(Resource, Default, Debug)]
+pub struct CardHold(pub bool);
+
+pub fn not_held(hold: Res<CardHold>) -> bool {
+    !hold.0
+}
+
 /// The combat's random source.
 #[derive(Resource)]
 pub struct CombatRng(pub Rng);
@@ -252,7 +307,7 @@ fn tick_run_clock(time: Res<Time>, mut run: ResMut<Run>) {
 
 /// The Turkish label for a skill at a level, as the HUD and cards show it.
 pub fn skill_label(id: SkillId, level: u8) -> String {
-    format!("{} {}", id.def().name, roman(level))
+    format!("{} {}", id.name(), roman(level))
 }
 
 fn roman(n: u8) -> &'static str {

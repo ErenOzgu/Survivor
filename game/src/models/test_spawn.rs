@@ -93,6 +93,22 @@ pub fn displays_by_folder<'a>(
     ids
 }
 
+/// Skinned displays whose model path holds `needle` (any case), lowest id first: a fallback
+/// when a kind's own folder has none.
+pub fn displays_matching<'a>(
+    rows: impl Iterator<Item = (u32, &'a str, bool)>,
+    needle: &str,
+) -> Vec<u32> {
+    let needle = needle.to_ascii_lowercase();
+    let mut ids: Vec<u32> = rows
+        .filter(|(_, path, skinned)| *skinned && path.to_ascii_lowercase().contains(&needle))
+        .map(|(id, _, _)| id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
 /// The animation state F9 steps to after `step` presses.
 pub fn cycle_state(step: usize) -> AnimState {
     const CYCLE: [AnimState; 7] = [
@@ -216,6 +232,17 @@ mod tests {
         assert_eq!(parse_test_var(Some("1")), Some(None));
         assert_eq!(parse_test_var(Some("12, 34")), Some(Some(vec![12, 34])));
         assert_eq!(parse_test_var(Some("x")), Some(None));
+    }
+
+    #[test]
+    fn displays_are_found_by_a_word_in_their_path() {
+        let rows = [
+            (30, "Creature\\Tarantula\\Tarantula.mdx", true),
+            (12, "Creature\\Spider\\SpiderBlack.mdx", false),
+            (20, "Creature\\SpiderBlack\\SpiderBlack.mdx", true),
+        ];
+        assert_eq!(displays_matching(rows.into_iter(), "SPIDER"), vec![20]);
+        assert_eq!(displays_matching(rows.into_iter(), "tarantula"), vec![30]);
     }
 
     #[test]
