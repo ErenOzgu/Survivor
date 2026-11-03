@@ -52,6 +52,21 @@ kritik, XP). İki skill en üst seviyede buluşunca **evrim** kartı çıkar: Fr
 Kış Okları, Fireball + Flamestrike → Pyroblast, Arcane Missiles + Arcane Explosion → Arkan Fırtına.
 Sayılar ve ayrıntılar `game/src/content/` ve README'de.
 
+### Ganimet (Aşama 4)
+
+- 6 yuva: baş, göğüs, eller, bacaklar, ayaklar, silah. 4 nadirlik: Sıradan, Kaliteli, Nadir, Destansı.
+- Eşyalar listelenmez, üretilir: nadirlik bonus sayısını (1/2/3/3) ve gücünü belirler; bonuslar
+  pasiflerle aynı istatistiklerdir. Görünüm istemcinin o yuvaya uyan eşya görünümlerinden seçilir.
+- Düşüş: elit ve mini boss 1 eşya (kese), map boss'u sandığı 3 eşya (daha iyi oranlar).
+- Çanta 24 eşya; eşyalar koşular arası kalır.
+
+### İlerleme (Aşama 5)
+
+- Koşularda toplanan XP talent XP'sine eklenir; puan maliyeti artar (150 + 60 × n).
+- Mage talent ağacı: Buz (savunma), Ateş (saldırı), Arkan (fayda); her kolda 3 kademe, kademe kolda
+  3 ve 5 puanla açılır. Puanlar ücretsiz geri alınabilir.
+- Launcher: WoW Data klasörünü bir kez sorar, ayar dosyasına yazar, oyunu açar.
+
 ## İlk harita: Elwynn (Goldshire çevresi)
 
 - Normal mob'lar: kobold, kurt, örümcek; zamanla daha kalabalık ve güçlü dalgalar
@@ -61,7 +76,6 @@ Sayılar ve ayrıntılar `game/src/content/` ve README'de.
 ## Açık sorular
 
 - Kaç harita, hangi bölgeler?
-- Gear slotları ve drop nadirlikleri
 
 ## Teknik temel
 

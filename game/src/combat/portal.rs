@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 
 use super::boss_rules::{summary_lines, MapSummary};
-use super::bosses::{BossAssets, BossNotice, BossRun, BossSet};
+use super::bosses::{BossAssets, BossRun, BossSet};
 use super::cards::CardScreen;
 use super::hud::UiFont;
 use super::rules::flat_dist;
@@ -19,6 +19,7 @@ pub struct PortalPlugin;
 impl Plugin for PortalPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<MapCleared>()
+            .add_message::<ChestOpened>()
             .init_resource::<ClearScreen>()
             .add_systems(
                 Update,
@@ -36,7 +37,11 @@ impl Plugin for PortalPlugin {
 #[derive(Message, Debug, Clone, Copy)]
 pub struct MapCleared;
 
-/// The boss's loot chest (phase 4 fills it).
+/// Sent when the hero opens the boss's chest; the loot screen rolls its items.
+#[derive(Message, Debug, Clone, Copy)]
+pub struct ChestOpened;
+
+/// The boss's loot chest.
 #[derive(Component)]
 pub struct Chest;
 
@@ -93,7 +98,7 @@ pub fn spawn_chest_and_portal(
 /// Touching the chest opens it. Phase 4 puts the boss loot here; for now it only says so.
 fn open_chest(
     mut commands: Commands,
-    mut notice: ResMut<BossNotice>,
+    mut opened: MessageWriter<ChestOpened>,
     heroes: Query<&Transform, (With<Hero>, Without<Chest>)>,
     chests: Query<(Entity, &Transform), With<Chest>>,
 ) {
@@ -103,7 +108,7 @@ fn open_chest(
     for (e, xf) in &chests {
         if flat_dist(xf.translation, hero.translation) <= TOUCH {
             commands.entity(e).try_despawn();
-            notice.show("Ganimet sandığı açıldı. (İçi Aşama 4'te dolacak.)");
+            opened.write(ChestOpened);
         }
     }
 }

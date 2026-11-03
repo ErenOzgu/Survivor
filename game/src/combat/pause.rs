@@ -34,7 +34,7 @@ impl PauseMenu {
 
 /// A menu choice.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-enum Choice {
+pub(super) enum Choice {
     Resume,
     Restart,
     MainMenu,
@@ -78,7 +78,7 @@ pub fn stat_lines(s: &Stats) -> Vec<String> {
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-fn pause_menu(
+pub(super) fn pause_menu(
     mut commands: Commands,
     mut menu: ResMut<PauseMenu>,
     mut clock_v: ResMut<Time<Virtual>>,
@@ -86,19 +86,34 @@ fn pause_menu(
     cards: Res<CardScreen>,
     clear: Res<ClearScreen>,
     run: Res<Run>,
+    save: Res<super::save::Save>,
     font: Res<UiFont>,
     art: Res<WowArt>,
     buttons: Query<(&Interaction, &Choice), Changed<Interaction>>,
     main_menu: Res<super::menu::MainMenu>,
+    inv: Res<super::gear_ui::Inventory>,
+    loot: Res<super::gear_ui::LootScreen>,
     mut restart: MessageWriter<RestartRun>,
     mut exit: MessageWriter<AppExit>,
 ) {
     let esc = keys.just_pressed(KeyCode::Escape);
     let Some(root) = menu.open else {
         // Another screen already holds the pause.
-        if esc && !cards.is_open() && !clear.is_open() && !main_menu.is_open() {
+        if esc
+            && !cards.is_open()
+            && !clear.is_open()
+            && !main_menu.is_open()
+            && !inv.is_open()
+            && !loot.is_open()
+        {
             clock_v.pause();
-            menu.open = Some(spawn_menu(&mut commands, &run, &font, &art));
+            menu.open = Some(spawn_menu(
+                &mut commands,
+                &run,
+                &save.data.bonus(),
+                &font,
+                &art,
+            ));
         }
         return;
     };
@@ -138,10 +153,16 @@ fn pause_menu(
     }
 }
 
-fn spawn_menu(commands: &mut Commands, run: &Run, font: &UiFont, art: &WowArt) -> Entity {
+fn spawn_menu(
+    commands: &mut Commands,
+    run: &Run,
+    bonus: &super::rules::Bonus,
+    font: &UiFont,
+    art: &WowArt,
+) -> Entity {
     let gold = Color::srgb(1.0, 0.82, 0.0);
     let dim = Color::srgb(0.8, 0.8, 0.8);
-    let stats = Stats::from_passives(&run.passives);
+    let stats = Stats::from_parts(&run.passives, bonus);
     let mut root = commands.spawn((
         Name::new("pause menu"),
         Node {

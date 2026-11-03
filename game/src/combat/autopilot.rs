@@ -1,5 +1,5 @@
 //! `RNS_AUTOPLAY=1`: the game plays itself, for balance runs. The hero runs away from what is
-//! close and toward XP orbs, picks cards by a fixed priority, and every 15 s of run time a row
+//! close and toward loot and XP orbs, picks cards by a fixed priority, and every 15 s of run time a row
 //! goes to `rnsurvivors-denge.csv` (or `RNS_BALANCE_LOG`). `RNS_SPEEDUP=2` runs the clock faster.
 //! It drives the game through its own keys, so it plays by the same rules as a player.
 
@@ -90,7 +90,8 @@ fn set_speed(pilot: Res<Autopilot>, mut clock: ResMut<Time<Virtual>>) {
 
 /// Where to run: away from close enemies and bolts (closer = stronger), toward the nearest orb in
 /// reach, with a slight sideways drift so the hero circles instead of backing into a corner.
-pub fn steer(hero: Vec3, threats: &[Vec3], orbs: &[Vec3]) -> Vec3 {
+/// Loot (bags, the chest) pulls from farther and harder than orbs.
+pub fn steer(hero: Vec3, threats: &[Vec3], orbs: &[Vec3], loot: &[Vec3]) -> Vec3 {
     let mut dir = Vec3::ZERO;
     for t in threats {
         let d = (hero - *t).with_y(0.0);
@@ -115,6 +116,18 @@ pub fn steer(hero: Vec3, threats: &[Vec3], orbs: &[Vec3]) -> Vec3 {
         // Orbs pull less the more danger there is.
         let to = (*o - hero).with_y(0.0).normalize_or_zero();
         dir += to * (0.3 / (1.0 + 4.0 * danger));
+    }
+    if let Some(l) = loot
+        .iter()
+        .filter(|l| (**l - hero).with_y(0.0).length() < 45.0)
+        .min_by(|a, b| {
+            (**a - hero)
+                .length_squared()
+                .total_cmp(&(**b - hero).length_squared())
+        })
+    {
+        let to = (*l - hero).with_y(0.0).normalize_or_zero();
+        dir += to * (0.8 / (1.0 + 2.0 * danger));
     }
     dir.with_y(0.0).normalize_or_zero()
 }
@@ -162,18 +175,36 @@ pub fn auto_pick(cards: &[Card]) -> usize {
 fn drive(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     cards: Res<CardScreen>,
+    loot_screen: Res<super::gear_ui::LootScreen>,
     cams: Query<&FollowCam>,
     heroes: Query<&Transform, With<Hero>>,
     enemies: Query<&Transform, (With<Enemy>, Without<Hero>)>,
     bolts: Query<&Transform, (With<EnemyBolt>, Without<Hero>)>,
     orbs: Query<&Transform, (With<Orb>, Without<Hero>)>,
+    loot: Query<
+        &Transform,
+        (
+            Or<(With<super::gear_ui::LootBag>, With<super::portal::Chest>)>,
+            Without<Hero>,
+        ),
+    >,
     mut picked: Local<bool>,
 ) {
     for k in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD] {
         keys.release(k);
     }
-    for k in [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3] {
+    for k in [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Enter,
+    ] {
         keys.release(k);
+    }
+    // Take the chest's loot.
+    if loot_screen.is_open() {
+        keys.press(KeyCode::Enter);
+        return;
     }
     if let Some(on_screen) = cards.cards() {
         // One key press per screen; the next screen gets its own.
@@ -193,8 +224,9 @@ fn drive(
         .chain(bolts.iter())
         .map(|t| t.translation)
         .collect();
+    let loot_spots: Vec<Vec3> = loot.iter().map(|t| t.translation).collect();
     let orb_spots: Vec<Vec3> = orbs.iter().map(|t| t.translation).collect();
-    let want = steer(hero.translation, &threats, &orb_spots);
+    let want = steer(hero.translation, &threats, &orb_spots, &loot_spots);
     let yaw = cams.single().map(|c| c.yaw).unwrap_or(0.0);
     let input = keys_for(want, yaw);
     if input.y > 0.0 {
@@ -292,13 +324,17 @@ mod tests {
     #[test]
     fn runs_from_danger_and_to_orbs() {
         let hero = Vec3::ZERO;
-        let away = steer(hero, &[Vec3::X * 3.0], &[]);
+        let away = steer(hero, &[Vec3::X * 3.0], &[], &[]);
         assert!(away.x < 0.0, "{away:?}");
-        let to_orb = steer(hero, &[], &[Vec3::Z * 5.0]);
+        let to_orb = steer(hero, &[], &[Vec3::Z * 5.0], &[]);
         assert!(to_orb.z > 0.9);
-        assert_eq!(steer(hero, &[], &[]), Vec3::ZERO);
+        assert_eq!(steer(hero, &[], &[], &[]), Vec3::ZERO);
+        // Loot pulls from far away, where orbs do not.
+        let far = Vec3::X * 30.0;
+        assert_eq!(steer(hero, &[], &[far], &[]), Vec3::ZERO);
+        assert!(steer(hero, &[], &[], &[far]).x > 0.9);
         // Danger beats greed.
-        let both = steer(hero, &[Vec3::Z * 2.0], &[Vec3::Z * 5.0]);
+        let both = steer(hero, &[Vec3::Z * 2.0], &[Vec3::Z * 5.0], &[]);
         assert!(both.z < 0.0);
     }
 
@@ -339,6 +375,9 @@ mod tests {
             passives: Default::default(),
             kills: 30,
             pending_cards: 0,
+            xp_total: 0,
+            revive_used: false,
+            start_applied: false,
         };
         let r = row(2, "ornek", &run, (80.0, 100.0), 12);
         assert_eq!(r, "2,ornek,61,4,80,100,30,12,frostbolt1,");

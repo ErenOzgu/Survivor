@@ -41,6 +41,7 @@ fn collect_orbs(
     mut commands: Commands,
     time: Res<Time>,
     mut run: ResMut<Run>,
+    save: Res<super::save::Save>,
     heroes: Query<&Transform, (With<Hero>, Without<Orb>)>,
     mut orbs: Query<(Entity, &mut Transform, &Orb)>,
 ) {
@@ -48,7 +49,7 @@ fn collect_orbs(
         return;
     };
     let dt = time.delta_secs();
-    let stats = rules::Stats::from_passives(&run.passives);
+    let stats = rules::Stats::from_parts(&run.passives, &save.data.bonus());
     let magnet = ORB_MAGNET * stats.magnet_mul;
     let mut gained = 0;
     for (e, mut xf, orb) in &mut orbs {
@@ -66,6 +67,7 @@ fn collect_orbs(
         }
     }
     if gained > 0 {
+        run.xp_total += gained;
         let (level, xp, ups) = rules::add_xp(run.level, run.xp, gained);
         run.level = level;
         run.xp = xp;
