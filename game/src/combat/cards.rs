@@ -102,8 +102,6 @@ fn card_icon(card: Card, art: &WowArt) -> Option<Handle<Image>> {
     }
 }
 
-const GOLD: Color = Color::srgb(1.0, 0.82, 0.0);
-
 /// What a card belongs to: it sets the frame colour, the painting behind the icon and the label
 /// on the card's foot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,27 +124,6 @@ impl School {
             },
             Card::NewPassive(_) | Card::UpgradePassive(..) => School::Passive,
             Card::Heal => School::Potion,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            School::Frost => "Buz",
-            School::Fire => "Ateş",
-            School::Arcane => "Arkan",
-            School::Passive => "Pasif",
-            School::Potion => "İksir",
-        }
-    }
-
-    /// The frame's colour (sRGB).
-    fn frame(self) -> [f32; 3] {
-        match self {
-            School::Frost => [0.42, 0.52, 0.86],
-            School::Fire => [0.82, 0.36, 0.16],
-            School::Arcane => [0.62, 0.36, 0.86],
-            School::Passive => [0.36, 0.62, 0.36],
-            School::Potion => [0.78, 0.24, 0.28],
         }
     }
 
@@ -183,14 +160,38 @@ pub fn card_gem(card: Card) -> String {
     }
 }
 
-/// The small gem under the name: how rare the pick is.
-fn rarity(card: Card) -> Color {
+/// How rare a pick is, WoW's item-quality colours: an upgrade is good (green), a new passive
+/// rare (blue), a new skill epic (purple), an evolution legendary (orange), the potion common.
+pub fn rarity(card: Card) -> (&'static str, Color) {
     match card {
-        Card::Upgrade(..) | Card::UpgradePassive(..) => Color::srgb(0.92, 0.92, 0.92),
-        Card::New(_) => Color::srgb(0.25, 0.55, 1.0),
-        Card::NewPassive(_) => Color::srgb(0.7, 0.35, 1.0),
-        Card::Evolve(..) => Color::srgb(1.0, 0.55, 0.1),
-        Card::Heal => Color::srgb(0.3, 0.85, 0.3),
+        Card::Heal => ("SIRADAN", Color::srgb(0.92, 0.92, 0.92)),
+        Card::Upgrade(..) | Card::UpgradePassive(..) => ("İYİ", Color::srgb(0.12, 1.0, 0.0)),
+        Card::NewPassive(_) => ("NADİR", Color::srgb(0.0, 0.44, 0.87)),
+        Card::New(_) => ("EPİK", Color::srgb(0.64, 0.21, 0.93)),
+        Card::Evolve(..) => ("EFSANEVİ", Color::srgb(1.0, 0.5, 0.0)),
+    }
+}
+
+/// The line under the name: what kind of thing it is.
+pub fn card_kind(card: Card) -> &'static str {
+    match School::of(card) {
+        School::Frost => "Buz büyüsü",
+        School::Fire => "Ateş büyüsü",
+        School::Arcane => "Arkan büyüsü",
+        School::Passive => "Pasif",
+        School::Potion => "İksir",
+    }
+}
+
+/// The card's foot: what the pick does to what you have.
+pub fn card_footer(card: Card) -> String {
+    match card {
+        Card::New(_) => "Yeni skill: boş bir yuvaya girer".to_string(),
+        Card::Upgrade(id, _) => format!("{} skillini güçlendirir", id.def().name),
+        Card::Evolve(from, _) => format!("{} buna dönüşür", from.def().name),
+        Card::NewPassive(_) => "Yeni pasif".to_string(),
+        Card::UpgradePassive(p, _) => format!("{} pasifini güçlendirir", p.def().name),
+        Card::Heal => "Hemen içilir".to_string(),
     }
 }
 
@@ -220,18 +221,20 @@ const SHADOW: TextShadow = TextShadow {
     color: Color::srgba(0.0, 0.0, 0.0, 0.9),
 };
 
-/// The card's resting shadow, and its glow when hovered.
-fn card_shadow(glow: Option<Color>) -> BoxShadow {
-    match glow {
-        None => BoxShadow::new(
-            Color::srgba(0.0, 0.0, 0.0, 0.7),
-            Val::Px(0.0),
-            Val::Px(8.0),
-            Val::Px(0.0),
-            Val::Px(14.0),
-        ),
-        Some(c) => BoxShadow::new(c, Val::Px(0.0), Val::Px(0.0), Val::Px(6.0), Val::Px(26.0)),
-    }
+/// The card's glow in its rarity colour: soft at rest, strong when hovered.
+fn card_shadow(color: Color, lit: bool) -> BoxShadow {
+    let (alpha, spread, blur) = if lit {
+        (0.9, 6.0, 30.0)
+    } else {
+        (0.45, 1.0, 18.0)
+    };
+    BoxShadow::new(
+        color.with_alpha(alpha),
+        Val::Px(0.0),
+        Val::Px(0.0),
+        Val::Px(spread),
+        Val::Px(blur),
+    )
 }
 
 /// What a card is drawn from: the client art, the loaded images (for a painting's size) and
@@ -264,9 +267,9 @@ impl CardLook<'_> {
 #[derive(Component)]
 struct CardGlow(Color);
 
-const CARD_W: f32 = 250.0;
+const CARD_W: f32 = 260.0;
 const ART_W: f32 = 204.0;
-const ART_H: f32 = 172.0;
+const ART_H: f32 = 170.0;
 
 #[allow(clippy::too_many_arguments)]
 fn open_cards(
@@ -350,9 +353,9 @@ fn open_cards(
     screen.open = Some((root, cards));
 }
 
-/// One card, laid out like a collectible card: an oval painting with the spell's icon, a gem
-/// with the level in the corner, the name on a banner, the text on parchment, the school on the
-/// foot.
+/// One card: the key and the kind of pick on top, the icon in a glowing frame, the rarity, the
+/// name in its colour, the school, what it does, the level pips, and on the foot what it does to
+/// what you have. Over a faint painting of the school (the settings' `kart=`).
 fn spawn_card(
     row: &mut ChildSpawnerCommands,
     i: usize,
@@ -367,300 +370,209 @@ fn spawn_card(
         _ => title,
     };
     let school = School::of(card);
-    let frame = school.frame();
-    let glow = match card {
-        Card::Evolve(..) => Color::srgb(1.0, 0.6, 0.15),
-        _ => srgb(frame, 1.25),
-    };
-    let banner_gold = vertical(Color::srgb(0.78, 0.62, 0.34), Color::srgb(0.5, 0.36, 0.16));
-    let banner_edge = Color::srgb(0.32, 0.22, 0.1);
+    let (rarity_name, color) = rarity(card);
+    let dim = Color::srgb(0.62, 0.6, 0.58);
 
     row.spawn((
         CardButton(i),
-        CardGlow(glow),
+        CardGlow(color),
         Button,
         Node {
             width: Val::Px(CARD_W),
-            height: Val::Px(370.0),
+            height: Val::Px(350.0),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
-            padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(12.0), Val::Px(8.0)),
-            border: UiRect::all(Val::Px(5.0)),
-            border_radius: BorderRadius::all(Val::Px(18.0)),
+            padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(38.0), Val::Px(10.0)),
+            row_gap: Val::Px(4.0),
+            border: UiRect::all(Val::Px(2.0)),
+            border_radius: BorderRadius::all(Val::Px(6.0)),
+            overflow: Overflow::clip(),
             ..default()
         },
-        BorderColor::all(srgb(frame, 0.85)),
-        vertical(srgb(frame, 0.45), srgb(frame, 0.16)),
-        card_shadow(None),
+        BorderColor::all(color),
+        vertical(
+            Color::srgb(0.08, 0.07, 0.1),
+            Color::srgb(0.025, 0.025, 0.035),
+        ),
+        card_shadow(color, false),
         UiTransform::default(),
     ))
     .with_children(|c| {
-        // The oval painting: the school's talent art, the spell's icon in front.
-        c.spawn((
-            Node {
-                width: Val::Px(ART_W),
-                height: Val::Px(ART_H),
-                border: UiRect::all(Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Percent(50.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(Color::srgb(0.72, 0.58, 0.3)),
-            vertical(srgb(card_color(card), 0.8), srgb(card_color(card), 0.2)),
-        ))
-        .with_children(|a| {
-            let painting = look.painting(school);
-            if let Some((img, rect)) = &painting {
-                a.spawn((
-                    ImageNode {
-                        image: img.clone(),
-                        rect: Some(*rect),
-                        ..default()
-                    },
-                    Node {
-                        position_type: PositionType::Absolute,
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        border_radius: BorderRadius::all(Val::Percent(50.0)),
-                        ..default()
-                    },
-                ));
-            }
-            let size = if painting.is_some() { 84.0 } else { 104.0 };
-            match card_icon(card, art) {
-                Some(icon) => {
-                    a.spawn((
-                        Node {
-                            width: Val::Px(size),
-                            height: Val::Px(size),
-                            border: UiRect::all(Val::Px(3.0)),
-                            border_radius: BorderRadius::all(Val::Px(8.0)),
-                            ..default()
-                        },
-                        BorderColor::all(Color::srgb(0.85, 0.7, 0.35)),
-                        BoxShadow::new(
-                            Color::srgba(0.0, 0.0, 0.0, 0.8),
-                            Val::Px(0.0),
-                            Val::Px(4.0),
-                            Val::Px(2.0),
-                            Val::Px(10.0),
-                        ),
-                    ))
-                    .with_children(|f| {
-                        f.spawn((
-                            ImageNode::new(icon),
-                            Node {
-                                width: Val::Percent(100.0),
-                                height: Val::Percent(100.0),
-                                border_radius: BorderRadius::all(Val::Px(5.0)),
-                                ..default()
-                            },
-                        ));
-                    });
-                }
-                None => {
-                    a.spawn((
-                        Text::new(title.chars().next().unwrap_or('?').to_string()),
-                        font.text(72.0),
-                        TextColor(Color::WHITE),
-                        SHADOW,
-                    ));
-                }
-            }
-        });
-
-        // The name on a banner over the painting's foot.
-        c.spawn((
-            Node {
-                width: Val::Px(CARD_W - 6.0),
-                height: Val::Px(40.0),
-                margin: UiRect::top(Val::Px(-24.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(7.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(banner_edge),
-            banner_gold.clone(),
-            BoxShadow::new(
-                Color::srgba(0.0, 0.0, 0.0, 0.6),
-                Val::Px(0.0),
-                Val::Px(3.0),
-                Val::Px(0.0),
-                Val::Px(6.0),
-            ),
-        ))
-        .with_children(|b| {
-            let size = if title.chars().count() > 16 {
-                18.0
-            } else {
-                22.0
-            };
-            b.spawn((
-                Text::new(title),
-                font.text(size),
-                TextColor(Color::WHITE),
-                SHADOW,
-            ));
-        });
-
-        // The rarity gem between the name and the text.
-        c.spawn((
-            Node {
-                width: Val::Px(16.0),
-                height: Val::Px(20.0),
-                margin: UiRect::vertical(Val::Px(-4.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Percent(50.0)),
-                ..default()
-            },
-            BorderColor::all(banner_edge),
-            BackgroundColor(rarity(card)),
-            ZIndex(1),
-        ));
-
-        // The text on parchment: the kind of pick, what it does, the level pips.
-        c.spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_grow: 1.0,
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(6.0),
-                padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(10.0), Val::Px(16.0)),
-                border: UiRect::all(Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(10.0)),
-                ..default()
-            },
-            BorderColor::all(Color::srgb(0.55, 0.42, 0.22)),
-            vertical(Color::srgb(0.88, 0.81, 0.66), Color::srgb(0.74, 0.65, 0.48)),
-            ZIndex(-1),
-        ))
-        .with_children(|t| {
-            let tag_color = match card {
-                Card::New(_) | Card::NewPassive(_) => Color::srgb(0.1, 0.45, 0.1),
-                Card::Evolve(..) => Color::srgb(0.6, 0.25, 0.0),
-                _ => Color::srgb(0.45, 0.28, 0.05),
-            };
-            t.spawn((
-                Text::new(card_tag(card)),
-                font.text(14.0),
-                TextColor(tag_color),
-            ));
-            t.spawn((
-                Text::new(body),
-                font.text(16.0),
-                TextColor(Color::srgb(0.16, 0.1, 0.04)),
-                TextLayout::new_with_justify(Justify::Center),
-            ));
-            if let Some((lvl, max)) = card_pips(card) {
-                t.spawn(Node {
-                    column_gap: Val::Px(4.0),
-                    margin: UiRect::top(Val::Px(2.0)),
+        // The school's painting, faint, behind the top half.
+        if let Some((img, rect)) = look.painting(school) {
+            c.spawn((
+                ImageNode {
+                    image: img,
+                    rect: Some(rect),
+                    color: Color::srgba(1.0, 1.0, 1.0, 0.28),
                     ..default()
-                })
-                .with_children(|pips| {
-                    for n in 1..=max {
-                        let fill = if n < lvl {
-                            Color::srgb(0.5, 0.34, 0.1)
-                        } else if n == lvl {
-                            Color::srgb(0.15, 0.6, 0.15)
-                        } else {
-                            Color::srgba(0.0, 0.0, 0.0, 0.15)
-                        };
-                        pips.spawn((
-                            Node {
-                                width: Val::Px(14.0),
-                                height: Val::Px(7.0),
-                                border_radius: BorderRadius::all(Val::Px(3.0)),
-                                ..default()
-                            },
-                            BackgroundColor(fill),
-                        ));
-                    }
-                });
-            }
-        });
-
-        // The school on the foot.
-        c.spawn((
-            Node {
-                padding: UiRect::axes(Val::Px(18.0), Val::Px(2.0)),
-                margin: UiRect::top(Val::Px(-14.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                ..default()
-            },
-            BorderColor::all(banner_edge),
-            banner_gold,
-        ))
-        .with_children(|f| {
-            f.spawn((
-                Text::new(school.label()),
-                font.text(16.0),
-                TextColor(Color::WHITE),
-                SHADOW,
+                },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Px(ART_H),
+                    ..default()
+                },
             ));
-        });
-
-        // The level gem in the top-left corner.
+        }
+        // The key that picks it, top-left.
         c.spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(-18.0),
-                top: Val::Px(-18.0),
-                width: Val::Px(54.0),
-                height: Val::Px(54.0),
-                border: UiRect::all(Val::Px(3.0)),
+                left: Val::Px(10.0),
+                top: Val::Px(10.0),
+                width: Val::Px(24.0),
+                height: Val::Px(24.0),
+                border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Percent(50.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BorderColor::all(Color::srgb(0.85, 0.92, 1.0)),
-            vertical(Color::srgb(0.45, 0.7, 1.0), Color::srgb(0.08, 0.22, 0.65)),
-            BoxShadow::new(
-                Color::srgba(0.0, 0.0, 0.0, 0.7),
-                Val::Px(0.0),
-                Val::Px(3.0),
-                Val::Px(0.0),
-                Val::Px(6.0),
-            ),
-        ))
-        .with_children(|g| {
-            g.spawn((
-                Text::new(card_gem(card)),
-                font.text(30.0),
-                TextColor(Color::WHITE),
-                SHADOW,
-            ));
-        });
-
-        // The key that picks it, in the top-right corner.
-        c.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                right: Val::Px(-12.0),
-                top: Val::Px(-12.0),
-                width: Val::Px(30.0),
-                height: Val::Px(30.0),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Percent(50.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(GOLD),
-            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.95)),
+            BorderColor::all(dim),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
         ))
         .with_children(|k| {
             k.spawn((
                 Text::new(format!("{}", i + 1)),
-                font.text(16.0),
-                TextColor(GOLD),
+                font.text(14.0),
+                TextColor(Color::WHITE),
+            ));
+        });
+        // The kind of pick, top-right.
+        c.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(10.0),
+                top: Val::Px(11.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BorderColor::all(color.with_alpha(0.8)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+        ))
+        .with_children(|t| {
+            t.spawn((Text::new(card_tag(card)), font.text(12.0), TextColor(color)));
+        });
+
+        // The icon in a frame that glows in the rarity colour.
+        c.spawn((
+            Node {
+                width: Val::Px(78.0),
+                height: Val::Px(78.0),
+                margin: UiRect::bottom(Val::Px(10.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BorderColor::all(color),
+            BackgroundColor(srgb(card_color(card), 0.35)),
+            BoxShadow::new(
+                color.with_alpha(0.7),
+                Val::Px(0.0),
+                Val::Px(0.0),
+                Val::Px(2.0),
+                Val::Px(16.0),
+            ),
+        ))
+        .with_children(|f| match card_icon(card, art) {
+            Some(icon) => {
+                f.spawn((
+                    ImageNode::new(icon),
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                ));
+            }
+            None => {
+                f.spawn((
+                    Text::new(card_gem(card)),
+                    font.text(40.0),
+                    TextColor(Color::WHITE),
+                    SHADOW,
+                ));
+            }
+        });
+
+        c.spawn((Text::new(rarity_name), font.text(13.0), TextColor(color)));
+        let size = if title.chars().count() > 16 {
+            22.0
+        } else {
+            26.0
+        };
+        c.spawn((
+            Text::new(title),
+            font.text(size),
+            TextColor(color),
+            TextLayout::new_with_justify(Justify::Center),
+            SHADOW,
+        ));
+        c.spawn((Text::new(card_kind(card)), font.text(15.0), TextColor(dim)));
+        c.spawn((
+            Node {
+                margin: UiRect::top(Val::Px(10.0)),
+                ..default()
+            },
+            Text::new(body),
+            font.text(17.0),
+            TextColor(Color::srgb(0.86, 0.95, 0.86)),
+            TextLayout::new_with_justify(Justify::Center),
+        ));
+        if let Some((lvl, max)) = card_pips(card) {
+            c.spawn(Node {
+                column_gap: Val::Px(4.0),
+                margin: UiRect::top(Val::Px(8.0)),
+                ..default()
+            })
+            .with_children(|pips| {
+                for n in 1..=max {
+                    let fill = if n < lvl {
+                        color.with_alpha(0.55)
+                    } else if n == lvl {
+                        color
+                    } else {
+                        Color::srgba(1.0, 1.0, 1.0, 0.12)
+                    };
+                    pips.spawn((
+                        Node {
+                            width: Val::Px(14.0),
+                            height: Val::Px(6.0),
+                            border_radius: BorderRadius::all(Val::Px(2.0)),
+                            ..default()
+                        },
+                        BackgroundColor(fill),
+                    ));
+                }
+            });
+        }
+        // The foot: what it does to what you have.
+        c.spawn((
+            Node {
+                margin: UiRect::top(Val::Auto),
+                width: Val::Percent(100.0),
+                padding: UiRect::top(Val::Px(8.0)),
+                border: UiRect::top(Val::Px(1.0)),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BorderColor::all(color.with_alpha(0.35)),
+        ))
+        .with_children(|f| {
+            f.spawn((
+                Text::new(card_footer(card)),
+                font.text(14.0),
+                TextColor(dim),
+                TextLayout::new_with_justify(Justify::Center),
             ));
         });
     });
@@ -676,8 +588,8 @@ fn hover_cards(
 ) {
     for (i, glow, mut xf, mut shadow) in &mut cards {
         let lit = matches!(i, Interaction::Hovered | Interaction::Pressed);
-        xf.scale = Vec2::splat(if lit { 1.06 } else { 1.0 });
-        *shadow = card_shadow(lit.then_some(glow.0));
+        xf.scale = Vec2::splat(if lit { 1.05 } else { 1.0 });
+        *shadow = card_shadow(glow.0, lit);
     }
 }
 
