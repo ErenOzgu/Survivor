@@ -243,6 +243,13 @@ target\release\rnsurvivors.exe
 git'e girmez), exe'nin yanındaki `Data` ve `WoW\Data`. Bulunamazsa konsola nerelere bakıldığı
 yazılır.
 
+### Veri raporu (konsolsuz)
+
+Oyun açılışta, çalıştırıldığı klasöre `rnsurvivors-rapor.txt` yazar: her büyünün `Spell.dbc`
+numarası, ikonu, efekt modellerinin yolları (füze, cast, impact…), pasif ikonları ve arayüz
+dokularının bulunup bulunmadığı. Sadece numara ve dosya yolu içerir, WoW verisinin kendisini
+değil; git'e girmez. Bir sorun olursa bu dosyayı paylaşmak yeterli.
+
 ### Kontroller
 
 | Tuş | İş |

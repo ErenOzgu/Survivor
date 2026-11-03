@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use benilla_assets::{LockRecover, WorldAssets};
-use benilla_formats::{load_spell_catalog, SpellCatalog};
+use benilla_formats::{
+    load_spell_catalog, load_spell_visual_catalog, SpellCatalog, SpellVisualCatalog,
+};
 
 use crate::content::passives::PassiveId;
 use crate::content::SkillId;
@@ -53,6 +55,8 @@ pub struct WowArt {
     pub passives: HashMap<PassiveId, Handle<Image>>,
     /// The spell table, kept for the spell effects.
     pub spells: Option<SpellCatalog>,
+    /// The spell visual tables (missile models, cast and impact kits), for the spell effects.
+    pub visuals: Option<SpellVisualCatalog>,
 }
 
 impl WowArt {
@@ -169,7 +173,173 @@ fn load_art(
             None => warn!("rnsurvivors: no icon for passive {:?} (spell {name:?})", p),
         }
     }
+    let visuals = {
+        let mut chain = wa.chain.lock_recover();
+        load_spell_visual_catalog(&mut chain)
+    };
+    match visuals {
+        Ok(v) => art.visuals = Some(v),
+        Err(e) => warn!("rnsurvivors: spell visuals unavailable ({e:#})"),
+    }
     art.spells = Some(catalog);
+    write_report(&art);
+}
+
+/// The report file: what was read from the client, for sharing without the console.
+pub const REPORT_FILE: &str = "rnsurvivors-rapor.txt";
+
+/// One stage of a spell's visual: its name and the effect models it fires.
+pub struct StageRow {
+    pub stage: &'static str,
+    pub kit: u32,
+    pub models: Vec<String>,
+}
+
+/// Every stage of a `SpellVisual` row with the model paths its kits name (attachment: path).
+pub fn visual_rows(
+    visuals: &SpellVisualCatalog,
+    visual_id: u32,
+) -> (Option<String>, Vec<StageRow>) {
+    let Some(st) = visuals.stages(visual_id) else {
+        return (None, Vec::new());
+    };
+    let path = |id: u32| visuals.effect_path(id).map(str::to_string);
+    let missile = (st.missile_model != 0).then(|| {
+        path(st.missile_model).unwrap_or_else(|| format!("(effect {} yolu yok)", st.missile_model))
+    });
+    let mut rows = Vec::new();
+    for (stage, kit) in [
+        ("precast", st.precast),
+        ("cast", st.cast),
+        ("impact", st.impact),
+        ("state", st.state),
+        ("channel", st.channel),
+        ("area kit", st.area_kit),
+    ] {
+        if kit == 0 {
+            continue;
+        }
+        let models = visuals
+            .kit(kit)
+            .map(|k| {
+                k.effects()
+                    .map(|(tag, id)| {
+                        format!(
+                            "{}: {}",
+                            attach_name(tag),
+                            path(id).unwrap_or_else(|| format!("effect {id}"))
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        rows.push(StageRow { stage, kit, models });
+    }
+    if st.area_effect != 0 {
+        rows.push(StageRow {
+            stage: "area model",
+            kit: 0,
+            models: path(st.area_effect).into_iter().collect(),
+        });
+    }
+    (missile, rows)
+}
+
+/// A kit slot's attachment, as a readable name.
+pub fn attach_name(tag: u16) -> &'static str {
+    match tag {
+        0x14 => "baş",
+        0x22 => "göğüs",
+        0x13 => "ayak",
+        0x15 => "sol el",
+        0x16 => "sağ el",
+        0x11 => "nefes",
+        0x17..=0x19 => "özel",
+        u16::MAX => "dünya",
+        _ => "?",
+    }
+}
+
+fn write_report(art: &WowArt) {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(out, "Rnsurvivors veri raporu");
+    let _ = writeln!(
+        out,
+        "(Oyunun senin WoW istemcinden okudukları: numaralar ve dosya yolları.)"
+    );
+    let _ = writeln!(out, "Data: {:?}\n", benilla_formats::wow_data());
+    let _ = writeln!(out, "== Skill'ler ==");
+    for id in SkillId::every() {
+        let def = id.def();
+        let Some(sk) = art.skills.get(&id) else {
+            let _ = writeln!(out, "[{}] büyü bulunamadı ({:?})", def.name, def.icon_spell);
+            continue;
+        };
+        let _ = writeln!(
+            out,
+            "[{}] spell {} ({}), visual {}, ikon {} {}",
+            def.name,
+            sk.spell_id,
+            def.icon_spell,
+            sk.visual,
+            sk.icon_path.as_deref().unwrap_or("-"),
+            if sk.icon.is_some() {
+                "(yüklendi)"
+            } else {
+                "(YÜKLENEMEDİ)"
+            }
+        );
+        if let Some(v) = &art.visuals {
+            let (missile, rows) = visual_rows(v, sk.visual);
+            if let Some(m) = missile {
+                let _ = writeln!(out, "    füze: {m}");
+            }
+            for r in rows {
+                let _ = writeln!(
+                    out,
+                    "    {} (kit {}): {}",
+                    r.stage,
+                    r.kit,
+                    r.models.join(" | ")
+                );
+            }
+        }
+    }
+    let _ = writeln!(out, "\n== Pasifler ==");
+    for p in PassiveId::ALL {
+        let d = p.def();
+        let ok = if art.passives.contains_key(&p) {
+            "ikon yüklendi"
+        } else {
+            "İKON YOK"
+        };
+        let _ = writeln!(out, "[{}] {:?}: {ok}", d.name, d.icon_spell);
+    }
+    let _ = writeln!(out, "\n== Arayüz dokuları ==");
+    for path in [
+        STATUS_BAR,
+        PLATE_BORDER,
+        DIALOG_BACKGROUND,
+        TOOLTIP_BACKGROUND,
+        SLOT_FRAME,
+    ] {
+        let ok = if art.ui.contains_key(path) {
+            "var"
+        } else {
+            "YOK"
+        };
+        let _ = writeln!(out, "{path}: {ok}");
+    }
+    match std::fs::write(REPORT_FILE, &out) {
+        Ok(()) => {
+            let at = std::fs::canonicalize(REPORT_FILE)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| REPORT_FILE.to_string());
+            info!("rnsurvivors: rapor yazıldı: {at}");
+        }
+        Err(e) => warn!("rnsurvivors: rapor yazılamadı ({e})"),
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +368,13 @@ mod tests {
         ];
         assert_eq!(pick_spell(rows.into_iter(), "Frostbolt"), Some(116));
         assert_eq!(pick_spell(rows.into_iter(), "Blink"), None);
+    }
+
+    #[test]
+    fn attachments_read() {
+        assert_eq!(attach_name(0x16), "sağ el");
+        assert_eq!(attach_name(u16::MAX), "dünya");
+        assert_eq!(attach_name(1), "?");
     }
 
     #[test]
