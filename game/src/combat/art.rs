@@ -9,7 +9,8 @@ use bevy::prelude::*;
 
 use benilla_assets::{LockRecover, WorldAssets};
 use benilla_formats::{
-    load_spell_catalog, load_spell_visual_catalog, SpellCatalog, SpellVisualCatalog, VisualStages,
+    load_loading_screens, load_spell_catalog, load_spell_visual_catalog, SpellCatalog,
+    SpellVisualCatalog, VisualStages,
 };
 
 use crate::content::passives::PassiveId;
@@ -65,6 +66,77 @@ pub struct WowArt {
     pub fx: HashMap<SkillId, SkillFx>,
     /// The XP orb's look: a green missile model from the client.
     pub orb_model: Option<String>,
+    /// Loading-screen paintings for the level-up cards, by [`SCENE_NEEDLES`] key.
+    pub scenes: HashMap<&'static str, Handle<Image>>,
+}
+
+/// Which painting the level-up cards show behind the icon: `kart=agac` (the talent trees) or
+/// `kart=yukleme` (the loading screens, the default) in the settings file, or `RNS_CARD_ART`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CardArt {
+    Talent,
+    #[default]
+    Loading,
+}
+
+pub const CARD_ART_VAR: &str = "RNS_CARD_ART";
+
+impl CardArt {
+    pub fn parse(v: &str) -> Option<Self> {
+        match v.trim().to_ascii_lowercase().as_str() {
+            "agac" | "ağaç" | "talent" => Some(CardArt::Talent),
+            "yukleme" | "yükleme" | "loading" => Some(CardArt::Loading),
+            _ => None,
+        }
+    }
+
+    pub fn from_settings() -> Self {
+        std::env::var(CARD_ART_VAR)
+            .ok()
+            .or_else(|| {
+                std::fs::read_to_string(crate::settings::settings_path())
+                    .ok()
+                    .and_then(|t| crate::settings::setting(&t, "kart"))
+            })
+            .and_then(|v| Self::parse(&v))
+            .unwrap_or_default()
+    }
+}
+
+/// Each card school's loading screen, by words in its file name, in preference order.
+pub const SCENE_NEEDLES: [(&str, &[&str]); 5] = [
+    ("frost", &["naxxramas", "scholomance", "easternkingdom"]),
+    ("fire", &["moltencore", "blackrock", "ragefire"]),
+    ("arcane", &["diremaul", "ahnqiraj", "kalimdor"]),
+    ("passive", &["easternkingdom"]),
+    ("potion", &["kalimdor"]),
+];
+
+/// The first path (by needle order) whose file name holds a needle.
+pub fn pick_scene<'a>(paths: &'a [String], needles: &[&str]) -> Option<&'a str> {
+    needles.iter().find_map(|n| {
+        paths
+            .iter()
+            .find(|p| {
+                let file = p.rsplit('\\').next().unwrap_or(p).to_ascii_lowercase();
+                file.contains(n)
+            })
+            .map(String::as_str)
+    })
+}
+
+/// The part of a `w`×`h` loading screen a card's oval shows: a centred cut at `aspect`
+/// (width / height), `zoom` of the width. A square file holds a 4:3 picture in its top.
+pub fn scene_crop(w: f32, h: f32, aspect: f32, zoom: f32) -> Rect {
+    let content_h = if (w - h).abs() < 1.0 { w * 0.75 } else { h };
+    let mut cw = w * zoom;
+    let mut ch = cw / aspect;
+    if ch > content_h {
+        ch = content_h;
+        cw = ch * aspect;
+    }
+    let (cx, cy) = (w / 2.0, content_h / 2.0);
+    Rect::new(cx - cw / 2.0, cy - ch / 2.0, cx + cw / 2.0, cy + ch / 2.0)
 }
 
 /// The effect models a skill shows (paths of `Spells\\…mdx`, as the client names them).
@@ -220,6 +292,32 @@ fn load_art(
             }
             None => warn!("rnsurvivors: interface texture {path} not found"),
         }
+    }
+    let screens = {
+        let mut chain = wa.chain.lock_recover();
+        load_loading_screens(&mut chain)
+    };
+    match screens {
+        Ok(screens) => {
+            let paths: Vec<String> = (0..400)
+                .filter_map(|id| screens.path(id).map(str::to_string))
+                .collect();
+            for (key, needles) in SCENE_NEEDLES {
+                let Some(path) = pick_scene(&paths, needles) else {
+                    continue;
+                };
+                let stem = path
+                    .strip_suffix(".blp")
+                    .or_else(|| path.strip_suffix(".BLP"));
+                match wa.sprite_texture(stem.unwrap_or(path), &mut images) {
+                    Some(h) => {
+                        art.scenes.insert(key, h);
+                    }
+                    None => warn!("rnsurvivors: loading screen {path} not found"),
+                }
+            }
+        }
+        Err(e) => warn!("rnsurvivors: loading screens unavailable ({e:#})"),
     }
     let catalog = {
         let mut chain = wa.chain.lock_recover();
@@ -479,6 +577,15 @@ fn write_report(art: &WowArt) {
         };
         let _ = writeln!(out, "{path}: {ok}");
     }
+    let _ = writeln!(out, "\n== Kart resimleri (yükleme ekranları) ==");
+    for (key, _) in SCENE_NEEDLES {
+        let ok = if art.scenes.contains_key(key) {
+            "var"
+        } else {
+            "YOK"
+        };
+        let _ = writeln!(out, "{key}: {ok}");
+    }
     match std::fs::write(REPORT_FILE, &out) {
         Ok(()) => {
             let at = std::fs::canonicalize(REPORT_FILE)
@@ -493,6 +600,26 @@ fn write_report(art: &WowArt) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scenes_are_picked_by_name_and_cropped() {
+        let paths = vec![
+            "Interface\\Glues\\LoadingScreens\\LoadScreenKalimdor.blp".to_string(),
+            "Interface\\Glues\\LoadingScreens\\LoadScreenMoltenCore.blp".to_string(),
+        ];
+        assert_eq!(
+            pick_scene(&paths, &["blackrock", "moltencore"]),
+            Some(paths[1].as_str())
+        );
+        assert_eq!(pick_scene(&paths, &["naxxramas"]), None);
+        // A square file: the cut stays in its 4:3 top and keeps the aspect.
+        let r = scene_crop(1024.0, 1024.0, 1.2, 0.7);
+        assert!(r.min.y >= 0.0 && r.max.y <= 768.0, "{r:?}");
+        assert!((r.width() / r.height() - 1.2).abs() < 1e-3);
+        assert_eq!(CardArt::parse("Ağaç"), Some(CardArt::Talent));
+        assert_eq!(CardArt::parse("yukleme"), Some(CardArt::Loading));
+        assert_eq!(CardArt::parse("x"), None);
+    }
 
     #[test]
     fn rank_one_lowest_id_wins() {

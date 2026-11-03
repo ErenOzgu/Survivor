@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use super::art::{WowArt, TALENT_ARCANE, TALENT_FIRE, TALENT_FROST};
+use super::art::{scene_crop, CardArt, WowArt, TALENT_ARCANE, TALENT_FIRE, TALENT_FROST};
 use super::hero::HeroHealth;
 use super::hud::UiFont;
 use super::rules::{self, Card, CARDS, HEAL_CARD};
@@ -150,6 +150,17 @@ impl School {
         }
     }
 
+    /// The school's key in [`crate::combat::art::SCENE_NEEDLES`].
+    pub fn scene_key(self) -> &'static str {
+        match self {
+            School::Frost => "frost",
+            School::Fire => "fire",
+            School::Arcane => "arcane",
+            School::Passive => "passive",
+            School::Potion => "potion",
+        }
+    }
+
     /// The client's talent-tree painting for the school, behind the card's icon.
     pub fn painting(self) -> Option<&'static str> {
         match self {
@@ -223,6 +234,32 @@ fn card_shadow(glow: Option<Color>) -> BoxShadow {
     }
 }
 
+/// What a card is drawn from: the client art, the loaded images (for a painting's size) and
+/// which painting the settings ask for.
+struct CardLook<'a> {
+    art: &'a WowArt,
+    images: &'a Assets<Image>,
+    mode: CardArt,
+}
+
+impl CardLook<'_> {
+    /// The painting behind the icon and the part of it the oval shows.
+    fn painting(&self, school: School) -> Option<(Handle<Image>, Rect)> {
+        match self.mode {
+            CardArt::Talent => {
+                let img = self.art.ui(school.painting()?)?;
+                // The middle of the 256² top-left piece, at the oval's proportions.
+                Some((img, Rect::new(0.0, 22.0, 256.0, 240.0)))
+            }
+            CardArt::Loading => {
+                let img = self.art.scenes.get(school.scene_key())?.clone();
+                let size = self.images.get(&img)?.size_f32();
+                Some((img, scene_crop(size.x, size.y, ART_W / ART_H, 0.62)))
+            }
+        }
+    }
+}
+
 /// The colour a card glows in when hovered.
 #[derive(Component)]
 struct CardGlow(Color);
@@ -240,6 +277,7 @@ fn open_cards(
     run: Res<Run>,
     font: Res<UiFont>,
     art: Res<WowArt>,
+    (images, mut mode): (Res<Assets<Image>>, Local<Option<CardArt>>),
     pause: Res<super::pause::PauseMenu>,
     main_menu: Res<super::menu::MainMenu>,
     (inv, loot): (
@@ -256,6 +294,12 @@ fn open_cards(
     {
         return;
     }
+    let mode = *mode.get_or_insert_with(CardArt::from_settings);
+    let look = CardLook {
+        art: &art,
+        images: &images,
+        mode,
+    };
     let cards = rules::roll_cards(&run.loadout, &run.passives, &mut rng.0, CARDS);
     clock.pause();
 
@@ -293,7 +337,7 @@ fn open_cards(
             })
             .with_children(|row| {
                 for (i, card) in cards.iter().enumerate() {
-                    spawn_card(row, i, *card, &font, &art);
+                    spawn_card(row, i, *card, &font, &look);
                 }
             });
             p.spawn((
@@ -309,7 +353,14 @@ fn open_cards(
 /// One card, laid out like a collectible card: an oval painting with the spell's icon, a gem
 /// with the level in the corner, the name on a banner, the text on parchment, the school on the
 /// foot.
-fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFont, art: &WowArt) {
+fn spawn_card(
+    row: &mut ChildSpawnerCommands,
+    i: usize,
+    card: Card,
+    font: &UiFont,
+    look: &CardLook,
+) {
+    let art = look.art;
     let (title, body) = card_text(card);
     let title = match card {
         Card::Upgrade(id, _) => id.def().name.to_string(),
@@ -359,13 +410,12 @@ fn spawn_card(row: &mut ChildSpawnerCommands, i: usize, card: Card, font: &UiFon
             vertical(srgb(card_color(card), 0.8), srgb(card_color(card), 0.2)),
         ))
         .with_children(|a| {
-            let painting = school.painting().and_then(|p| art.ui(p));
-            if let Some(img) = &painting {
+            let painting = look.painting(school);
+            if let Some((img, rect)) = &painting {
                 a.spawn((
                     ImageNode {
                         image: img.clone(),
-                        // The middle of the 256² top-left piece, at the oval's proportions.
-                        rect: Some(Rect::new(0.0, 22.0, 256.0, 240.0)),
+                        rect: Some(*rect),
                         ..default()
                     },
                     Node {

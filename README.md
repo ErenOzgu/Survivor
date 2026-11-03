@@ -65,6 +65,12 @@ oynanabilir bir savaş döngüsü kurar:
   "VanCleef"/"Defias" olan görünüm). Boss sandığı ve ganimet keseleri istemcinin kendi nesne
   modelleri (`GameObjectDisplayInfo`). Giyilen başlık artık kafada görünür (kask modeli ırka ve
   cinsiyete göre). Portal şimdilik dönen bir halka.
+- **Seviye kartları:** koleksiyon kartı düzeninde: oval resmin önünde büyünün ikonu, köşede
+  seviye taşı, isim şeridi, nadirlik taşı (beyaz yükseltme, mavi yeni skill, mor yeni pasif,
+  turuncu evrim), parşömen üstünde açıklama, altta okul (Buz/Ateş/Arkan/Pasif/İksir). Üstüne
+  gelince büyür ve parlar. Oval resim ayar dosyasında `kart=` ile seçilir: `yukleme` (varsayılan;
+  istemcinin yükleme ekranlarından, Buz'a Naxxramas, Ateş'e Molten Core, Arkan'a Dire Maul) ya
+  da `agac` (büyücü yetenek ağacı resimleri). `RNS_CARD_ART` aynı işi görür.
 
 ### Düşmanlar
 
@@ -364,6 +370,7 @@ kürelerini toplamak.
 | `RNS_SPEEDUP` | `2` | `RNS_AUTOPLAY` ile: oyun saati bu kat hızlı akar |
 | `RNS_BALANCE_LOG` | `denge.csv` | `RNS_AUTOPLAY`'in yazdığı dosya |
 | `RNS_MUTE` | `1` | Sesi kapatır |
+| `RNS_CARD_ART` | `yukleme` / `agac` | Seviye kartlarının resmi |
 | `RNS_SURVEY` | `1` | Teşhis: eksik bir motor kaynağı paniğe değil uyarıya döner |
 | `WOW_WIN` | `1280x720` | Pencere boyutu (motorun değişkeni, varsayılan 1600x900) |
 | `WOW_NOVSYNC` | `1` | VSync kapalı (motorun değişkeni) |
