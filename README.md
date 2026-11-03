@@ -88,6 +88,11 @@ oynanabilir bir savaş döngüsü kurar:
 - **Hareket:** kahraman tuş değişince yeni yöne yumuşakça geçer, gövdesi gittiği yöne döner (8
   yöne kilitli değil). **Sağ fare basılıyken** fare kamerayı ve kahramanı çevirir (imleç gizlenir),
   iki tuş birden basılıysa ileri koşar; WoW'daki gibi.
+- **Cooldownlar (Z, X, C)**, aksiyon çubuğunun 7–9. yuvalarında, WoW ikonları ve efektleriyle:
+  - **Z, Bloodlust:** koşu başına bir kez; 40 sn skiller %35 hızlı dolar, %25 hızlı koşarsın.
+  - **X, Ice Barrier** (savunma, 5 dk): 20 sn en yüksek canının %60'ı kadar hasarı kalkan emer.
+  - **C, Arcane Power** (saldırı, 5 dk): 15 sn büyüler %50 fazla vurur.
+  Dolarken yuva kararır ve geri sayar, çalışırken altın çerçeve alır, harcanınca griye döner.
 - **Düşman can barları** WoW 1.12 nameplate'i: istemcinin `Nameplate-Border` çerçevesi, içinde
   kırmızı can barı, üstünde adı, sağdaki yuvada seviye. Hasar alan düşmanda görünür.
 - **Çökme kaydı:** oyun çökerse hata `%APPDATA%\Rnsurvivors\rnsurvivors-cokme.txt`'e yazılır;

@@ -3,6 +3,7 @@
 
 use bevy::math::{Vec2, Vec3};
 
+use crate::content::abilities::AbilityId;
 use crate::content::items::{Affix, Item};
 use crate::content::passives::{PassiveId, MAX_PASSIVES};
 use crate::content::talents::{TalentEffect, Talents};
@@ -370,6 +371,91 @@ impl Stats {
     }
 }
 
+impl Stats {
+    /// The stats with the running cooldown spells' multipliers on top.
+    pub fn with_abilities(mut self, a: &AbilityState) -> Self {
+        for id in a.active() {
+            let d = id.def();
+            self.damage_mul *= d.damage_mul;
+            self.cooldown_mul *= d.cooldown_mul;
+            self.speed_mul *= d.speed_mul;
+        }
+        self
+    }
+}
+
+/// The run's cooldown spells: seconds until each may be cast again, which once-per-run ones
+/// are spent, and seconds left on the running ones.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AbilityState {
+    pub ready_in: Vec<(AbilityId, f32)>,
+    pub spent: Vec<AbilityId>,
+    pub running: Vec<(AbilityId, f32)>,
+}
+
+impl AbilityState {
+    pub fn ready_in(&self, id: AbilityId) -> f32 {
+        self.ready_in
+            .iter()
+            .find(|(a, _)| *a == id)
+            .map_or(0.0, |(_, t)| *t)
+    }
+
+    pub fn is_spent(&self, id: AbilityId) -> bool {
+        self.spent.contains(&id)
+    }
+
+    pub fn can_cast(&self, id: AbilityId) -> bool {
+        !self.is_spent(id) && self.ready_in(id) <= 0.0
+    }
+
+    /// Seconds left on a running spell (0 if not running).
+    pub fn left(&self, id: AbilityId) -> f32 {
+        self.running
+            .iter()
+            .find(|(a, _)| *a == id)
+            .map_or(0.0, |(_, t)| *t)
+    }
+
+    pub fn active(&self) -> impl Iterator<Item = AbilityId> + '_ {
+        self.running.iter().map(|(a, _)| *a)
+    }
+
+    /// Casts it if it may be cast; returns whether it was.
+    pub fn cast(&mut self, id: AbilityId) -> bool {
+        if !self.can_cast(id) {
+            return false;
+        }
+        let d = id.def();
+        match d.cooldown {
+            Some(cd) => {
+                self.ready_in.retain(|(a, _)| *a != id);
+                self.ready_in.push((id, cd));
+            }
+            None => self.spent.push(id),
+        }
+        self.running.retain(|(a, _)| *a != id);
+        self.running.push((id, d.duration));
+        true
+    }
+
+    /// Advances the clocks; returns the spells that ran out.
+    pub fn tick(&mut self, dt: f32) -> Vec<AbilityId> {
+        for (_, t) in &mut self.ready_in {
+            *t = (*t - dt).max(0.0);
+        }
+        let mut ended = Vec::new();
+        for (a, t) in &mut self.running {
+            *t -= dt;
+            if *t <= 0.0 {
+                ended.push(*a);
+            }
+        }
+        self.running.retain(|(_, t)| *t > 0.0);
+        ended
+    }
+}
+
 impl Default for Stats {
     fn default() -> Self {
         Self::from_passives(&Passives::default())
@@ -641,6 +727,23 @@ pub fn parse_passives(s: &str) -> Passives {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cooldown_spells_cast_run_and_refill() {
+        let mut a = AbilityState::default();
+        assert!(a.cast(AbilityId::Bloodlust));
+        assert!(!a.cast(AbilityId::Bloodlust), "twice");
+        assert!(a.cast(AbilityId::ArcanePower));
+        let s = Stats::default().with_abilities(&a);
+        assert!(s.damage_mul > 1.0 && s.cooldown_mul < 1.0 && s.speed_mul > 1.0);
+        let ended = a.tick(16.0);
+        assert_eq!(ended, vec![AbilityId::ArcanePower]);
+        assert!(!a.can_cast(AbilityId::ArcanePower));
+        a.tick(300.0);
+        assert!(a.can_cast(AbilityId::ArcanePower));
+        assert!(!a.can_cast(AbilityId::Bloodlust), "once per run");
+        assert_eq!(a.running.len(), 0);
+    }
 
     #[test]
     fn xp_curve_grows() {

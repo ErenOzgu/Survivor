@@ -189,6 +189,7 @@ fn drive(
         ),
     >,
     mut picked: Local<bool>,
+    health: Res<super::hero::HeroHealth>,
 ) {
     for k in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD] {
         keys.release(k);
@@ -198,6 +199,9 @@ fn drive(
         KeyCode::Digit2,
         KeyCode::Digit3,
         KeyCode::Enter,
+        KeyCode::KeyZ,
+        KeyCode::KeyX,
+        KeyCode::KeyC,
     ] {
         keys.release(k);
     }
@@ -228,6 +232,20 @@ fn drive(
     let orb_spots: Vec<Vec3> = orbs.iter().map(|t| t.translation).collect();
     let want = steer(hero.translation, &threats, &orb_spots, &loot_spots);
     let yaw = cams.single().map(|c| c.yaw).unwrap_or(0.0);
+    // Cooldowns: the shield when hurt, the damage when crowded, Bloodlust once things get busy.
+    let near = threats
+        .iter()
+        .filter(|t| super::rules::flat_dist(**t, hero.translation) < 15.0)
+        .count();
+    if health.fraction() < 0.5 {
+        keys.press(KeyCode::KeyX);
+    }
+    if near >= 12 {
+        keys.press(KeyCode::KeyC);
+    }
+    if near >= 20 {
+        keys.press(KeyCode::KeyZ);
+    }
     let input = keys_for(want, yaw);
     if input.y > 0.0 {
         keys.press(KeyCode::KeyW);
@@ -378,6 +396,7 @@ mod tests {
             xp_total: 0,
             revive_used: false,
             start_applied: false,
+            abilities: Default::default(),
         };
         let r = row(2, "ornek", &run, (80.0, 100.0), 12);
         assert_eq!(r, "2,ornek,61,4,80,100,30,12,frostbolt1,");

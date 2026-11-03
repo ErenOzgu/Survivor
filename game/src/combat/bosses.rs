@@ -374,7 +374,7 @@ fn hurt_hero(health: &mut HeroHealth, debug: &DebugStart, damage: f32) {
     if debug.god || health.invulnerable > 0.0 {
         return;
     }
-    health.current = rules::apply_damage(health.current, damage).0;
+    health.hurt(damage);
 }
 
 /// Boss brains: guards wake, special attacks wind up (with a telegraph), land and recover.

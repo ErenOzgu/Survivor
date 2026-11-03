@@ -13,6 +13,7 @@ use benilla_formats::{
     SpellVisualCatalog, VisualStages,
 };
 
+use crate::content::abilities::AbilityId;
 use crate::content::passives::PassiveId;
 use crate::content::SkillId;
 
@@ -91,6 +92,8 @@ pub struct WowArt {
     pub fx: HashMap<SkillId, SkillFx>,
     /// The XP orb's look: a green missile model from the client.
     pub orb_model: Option<String>,
+    /// The cooldown spells' icons and effects.
+    pub abilities: HashMap<AbilityId, (Option<Handle<Image>>, SkillFx)>,
     /// Loading-screen paintings for the level-up cards, by [`SCENE_NEEDLES`] key.
     pub scenes: HashMap<&'static str, Handle<Image>>,
 }
@@ -422,9 +425,25 @@ fn load_art(
                 merge_fx(borrowed.into_iter().chain(std::iter::once(own))),
             );
         }
+        let mut abilities = HashMap::new();
+        for a in AbilityId::ALL {
+            let name = a.def().name;
+            let rows = catalog
+                .iter()
+                .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+            let icon = pick_spell(rows, name)
+                .and_then(|sid| catalog.get(sid))
+                .and_then(|d| d.icon.as_deref())
+                .and_then(|p| wa.sprite_texture(p, &mut images));
+            if icon.is_none() {
+                warn!("rnsurvivors: no icon for cooldown {name:?}");
+            }
+            abilities.insert(a, (icon, fx_of(name)));
+        }
         let orb = fx_of("Wrath").missile;
         art.fx = fx;
         art.orb_model = orb;
+        art.abilities = abilities;
     }
     art.spells = Some(catalog);
     write_report(&art);

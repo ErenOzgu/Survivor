@@ -9,6 +9,7 @@ use super::art::{WowArt, CLASS_ICONS, END_CAP, MAIN_BAR, STATUS_BAR, TARGET_FRAM
 use super::hero::{DeathNotice, HeroHealth};
 use super::rules;
 use super::{CombatSet, Run};
+use crate::content::abilities::AbilityId;
 use crate::content::SkillId;
 use crate::game::FollowCam;
 
@@ -24,6 +25,8 @@ impl Plugin for HudPlugin {
                     update_hud,
                     update_skill_bar,
                     update_cooldowns,
+                    update_ability_bar,
+                    update_ability_slots,
                     skin_bars,
                     apply_skins,
                 )
@@ -122,6 +125,17 @@ impl WowSkin {
 /// A plain stand-in shown only while the texture at this path is missing.
 #[derive(Component)]
 pub struct Fallback(pub &'static str);
+
+/// The cooldown spells' slots (the bar's 7th–9th buttons), rebuilt when the art arrives.
+#[derive(Component)]
+struct AbilityBar;
+/// A cooldown spell's slot parts: its shade, its countdown, its frame.
+#[derive(Component)]
+struct AbilityShade(AbilityId);
+#[derive(Component)]
+struct AbilityTimer(AbilityId);
+#[derive(Component)]
+struct AbilitySlot(AbilityId);
 
 /// The dark shade over a skill slot while it cools down; `full` is the longest wait seen.
 #[derive(Component)]
@@ -383,6 +397,17 @@ fn spawn_hud(mut commands: Commands, font: Res<UiFont>) {
                     },
                     WowSkin::new(END_CAP, [0.0, 0.0, 1.0, 1.0]).flipped(),
                 ));
+                // The cooldown spells in the 7th to 9th slots (filled by `update_ability_bar`).
+                b.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: bpx(8.0 + 42.0 * 6.0),
+                        bottom: bpx(4.0),
+                        column_gap: bpx(6.0),
+                        ..default()
+                    },
+                    AbilityBar,
+                ));
                 // Owned skills in the button slots (filled by `update_skill_bar`).
                 b.spawn((
                     Node {
@@ -512,6 +537,146 @@ fn update_skill_bar(
             });
         }
     });
+}
+
+/// Builds the cooldown spells' slots (again when the art arrives): icon, key, shade, countdown.
+fn update_ability_bar(
+    mut commands: Commands,
+    art: Res<WowArt>,
+    font: Res<UiFont>,
+    bars: Query<Entity, With<AbilityBar>>,
+    mut built: Local<bool>,
+) {
+    let Ok(bar) = bars.single() else {
+        return;
+    };
+    if *built && !art.is_changed() {
+        return;
+    }
+    *built = true;
+    commands.entity(bar).despawn_related::<Children>();
+    commands.entity(bar).with_children(|b| {
+        for id in AbilityId::ALL {
+            let d = id.def();
+            b.spawn((
+                Node {
+                    width: bpx(36.0),
+                    height: bpx(36.0),
+                    border: UiRect::all(Val::Px(2.0)),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.2, 0.1, 0.3, 0.6)),
+                BorderColor::all(Color::NONE),
+                AbilitySlot(id),
+            ))
+            .with_children(|slot| {
+                match art.abilities.get(&id).and_then(|(icon, _)| icon.clone()) {
+                    Some(img) => {
+                        slot.spawn((
+                            ImageNode::new(img),
+                            Node {
+                                position_type: PositionType::Absolute,
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                ..default()
+                            },
+                        ));
+                    }
+                    None => {
+                        slot.spawn((
+                            Text::new(d.name.chars().next().unwrap_or('?').to_string()),
+                            font.text(22.0),
+                            TextColor(Color::WHITE),
+                        ));
+                    }
+                }
+                slot.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(0.0),
+                        bottom: Val::Px(0.0),
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(0.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)),
+                    AbilityShade(id),
+                ));
+                slot.spawn((
+                    Text::new(""),
+                    font.text(15.0),
+                    TextColor(Color::WHITE),
+                    TextShadow::default(),
+                    AbilityTimer(id),
+                ));
+                // The key, top-left, as WoW shows a binding.
+                slot.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(3.0),
+                        top: Val::Px(1.0),
+                        ..default()
+                    },
+                    Text::new(d.key_label),
+                    font.text(12.0),
+                    TextColor(Color::srgb(0.85, 0.85, 0.85)),
+                    TextShadow::default(),
+                ));
+            });
+        }
+    });
+}
+
+/// `m:ss` above a minute, whole seconds under.
+pub fn countdown(secs: f32) -> String {
+    let s = secs.ceil() as u32;
+    if s >= 60 {
+        format!("{}:{:02}", s / 60, s % 60)
+    } else {
+        s.to_string()
+    }
+}
+
+/// The cooldown spells' slots follow their state: dark and counting down while cooling, grey
+/// once spent, a gold frame while running.
+#[allow(clippy::type_complexity)]
+fn update_ability_slots(
+    run: Res<Run>,
+    mut shades: Query<(&AbilityShade, &mut Node)>,
+    mut timers: Query<(&AbilityTimer, &mut Text)>,
+    mut slots: Query<(&AbilitySlot, &mut BorderColor)>,
+) {
+    let a = &run.abilities;
+    for (s, mut node) in &mut shades {
+        let f = if a.is_spent(s.0) {
+            1.0
+        } else {
+            s.0.def()
+                .cooldown
+                .map_or(0.0, |cd| shade_fraction(a.ready_in(s.0), cd))
+        };
+        node.height = Val::Percent(100.0 * f);
+    }
+    for (t, mut text) in &mut timers {
+        let want = if a.left(t.0) > 0.0 {
+            String::new()
+        } else if a.is_spent(t.0) {
+            "—".to_string()
+        } else if a.ready_in(t.0) > 0.0 {
+            countdown(a.ready_in(t.0))
+        } else {
+            String::new()
+        };
+        if text.0 != want {
+            text.0 = want;
+        }
+    }
+    for (s, mut border) in &mut slots {
+        *border = BorderColor::all(if a.left(s.0) > 0.0 { GOLD } else { Color::NONE });
+    }
 }
 
 /// How much of a slot the cooldown shade covers: the wait left over the longest wait seen.
@@ -681,6 +846,8 @@ mod tests {
     fn shades_and_texture_parts() {
         assert_eq!(super::shade_fraction(1.0, 4.0), 0.25);
         assert_eq!(super::shade_fraction(1.0, 0.0), 0.0);
+        assert_eq!(super::countdown(299.2), "5:00");
+        assert_eq!(super::countdown(42.5), "43");
         let r = super::uv_rect(bevy::math::Vec2::new(256.0, 128.0), super::PLAYER_FRAME);
         assert_eq!((r.min.x, r.max.x, r.max.y), (24.0, 256.0, 100.0));
     }
@@ -705,6 +872,8 @@ mod system_params {
         init(&mut world, skin_bars);
         init(&mut world, apply_skins);
         init(&mut world, update_cooldowns);
+        init(&mut world, update_ability_bar);
+        init(&mut world, update_ability_slots);
         init(&mut world, ui_on_follow_camera);
         init(&mut world, spawn_hud);
         init(&mut world, load_font);

@@ -42,6 +42,8 @@ pub struct HeroHealth {
     pub current: f32,
     pub max: f32,
     pub invulnerable: f32,
+    /// Damage an ice shield still soaks (Ice Barrier).
+    pub shield: f32,
 }
 
 impl HeroHealth {
@@ -50,6 +52,7 @@ impl HeroHealth {
             current: HERO_MAX_HEALTH,
             max: HERO_MAX_HEALTH,
             invulnerable: 0.0,
+            shield: 0.0,
         }
     }
 
@@ -63,7 +66,14 @@ impl HeroHealth {
         if god || self.invulnerable > 0.0 {
             return;
         }
-        self.current = rules::apply_damage(self.current, damage).0;
+        self.hurt(damage);
+    }
+
+    /// Damage through the shield: it soaks what it can, the rest comes off health.
+    pub fn hurt(&mut self, damage: f32) {
+        let soaked = damage.min(self.shield).max(0.0);
+        self.shield -= soaked;
+        self.current = rules::apply_damage(self.current, damage - soaked).0;
     }
 
     pub fn heal(&mut self, amount: f32) {
@@ -86,7 +96,8 @@ fn apply_stats(
     mut speed: ResMut<HeroSpeed>,
     mut base_speed: Local<Option<f32>>,
 ) {
-    let stats = rules::Stats::from_parts(&run.passives, &save.data.bonus());
+    let stats =
+        rules::Stats::from_parts(&run.passives, &save.data.bonus()).with_abilities(&run.abilities);
     if health.max != stats.max_health {
         let gain = stats.max_health - health.max;
         health.max = stats.max_health;
@@ -127,8 +138,7 @@ fn contact_damage(
         })
         .map(|(_, e)| e.dps)
         .sum();
-    let (h, _) = rules::apply_damage(health.current, dps * dt);
-    health.current = h;
+    health.hurt(dps * dt);
 }
 
 /// A death, unless the Ice Block talent still has its revive for this run.

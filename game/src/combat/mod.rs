@@ -6,6 +6,7 @@
 //! Everything waits until the hero stands on streamed ground, and while a level-up card screen
 //! is open the virtual clock is paused, so every system below sees `dt = 0`.
 
+pub mod abilities;
 pub mod art;
 pub mod autopilot;
 pub mod boss_hud;
@@ -114,6 +115,7 @@ impl Plugin for CombatPlugin {
                 world_look::WorldLookPlugin,
                 screen_fx::ScreenFxPlugin,
                 minimap::MinimapPlugin,
+                abilities::AbilitiesPlugin,
             ));
     }
 }
@@ -151,6 +153,8 @@ pub struct Run {
     pub revive_used: bool,
     /// The talents' run-start gifts were given.
     pub start_applied: bool,
+    /// The cooldown spells (Z, X, C).
+    pub abilities: rules::AbilityState,
 }
 
 impl Run {
@@ -166,6 +170,7 @@ impl Run {
             xp_total: 0,
             revive_used: false,
             start_applied: false,
+            abilities: rules::AbilityState::default(),
         }
     }
 }
