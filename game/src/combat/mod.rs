@@ -26,6 +26,7 @@ pub mod plates;
 pub mod portal;
 pub mod rules;
 pub mod save;
+pub mod shake;
 pub mod skills;
 pub mod sound;
 pub mod talent_ui;
@@ -106,6 +107,7 @@ impl Plugin for CombatPlugin {
                 fx::FxPlugin,
                 collide::CollidePlugin,
                 sound::SoundPlugin,
+                shake::ShakePlugin,
             ));
     }
 }

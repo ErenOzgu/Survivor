@@ -67,6 +67,8 @@ pub struct Enemy {
     pub slow: f32,
     /// Seconds left of the "just hit" pulse.
     pub hit_flash: f32,
+    /// Seconds left of a critical hit's knock-back.
+    pub knock: f32,
     /// Hit since its animation last looked (a flinch may play).
     pub just_hit: bool,
     /// Seconds to its next attack swing while touching the hero.
@@ -74,6 +76,8 @@ pub struct Enemy {
     /// Damage taken this frame (for the damage numbers), and whether any of it was a crit.
     pub took: f32,
     pub took_crit: bool,
+    /// The skill that hit it last this frame (the number's colour).
+    pub took_skill: Option<crate::content::SkillId>,
     /// Multiplier on its attacks' damage (the wave's), for bolts and blasts.
     pub damage_mul: f32,
     /// Seconds to its next shot (ranged kinds).
@@ -97,6 +101,8 @@ impl Enemy {
             slow_left: 0.0,
             slow: 0.0,
             hit_flash: 0.0,
+            knock: 0.0,
+            took_skill: None,
             just_hit: false,
             attack_cd: 0.0,
             took: 0.0,
@@ -117,7 +123,10 @@ impl Enemy {
         self.health = rules::apply_damage(self.health, damage).0;
         self.took += before - self.health;
         self.took_crit |= crit;
-        self.hit_flash = 0.12;
+        self.hit_flash = HIT_FLASH;
+        if crit {
+            self.knock = KNOCK_SECS;
+        }
         self.just_hit = true;
     }
 
@@ -194,6 +203,19 @@ fn spawn_waves(
     }
 }
 
+/// The "just hit" pulse: seconds, and how much bigger the model swells at its start.
+const HIT_FLASH: f32 = 0.14;
+const HIT_SWELL: f32 = 0.2;
+/// A critical hit pushes a common enemy back this long, this fast (yards per second); bosses
+/// stand.
+const KNOCK_SECS: f32 = 0.14;
+const KNOCK_SPEED: f32 = 7.0;
+
+/// The model's size while the hit pulse runs out: a quick swell that eases back.
+pub fn hit_scale(flash_left: f32) -> f32 {
+    1.0 + HIT_SWELL * (flash_left / HIT_FLASH).clamp(0.0, 1.0)
+}
+
 /// Enemies run at the hero, push apart a little, follow the ground and face where they go.
 /// One left far behind is put back on the ring.
 #[allow(clippy::too_many_arguments)]
@@ -203,7 +225,7 @@ fn move_enemies(
     streamer: Option<Res<TerrainStreamer>>,
     adt_tiles: Option<Res<Assets<AdtTile>>>,
     heroes: Query<&Transform, (With<Hero>, Without<Enemy>)>,
-    mut enemies: Query<(&mut Transform, &mut Enemy)>,
+    mut enemies: Query<(&mut Transform, &mut Enemy, Has<super::bosses::Boss>)>,
     world: benilla_world::collision::WorldCollision,
     mut shape: Local<Option<avian3d::prelude::Collider>>,
 ) {
@@ -216,14 +238,16 @@ fn move_enemies(
     // Crowding: a cheap pairwise push on a snapshot (the waves cap the count at a few hundred).
     let snapshot: Vec<(Vec3, f32)> = enemies
         .iter()
-        .map(|(xf, e)| (xf.translation, e.radius))
+        .map(|(xf, e, _)| (xf.translation, e.radius))
         .collect();
 
     let mut cache = None;
-    for (i, (mut xf, mut e)) in enemies.iter_mut().enumerate() {
+    for (i, (mut xf, mut e, boss)) in enemies.iter_mut().enumerate() {
         e.frozen = (e.frozen - dt).max(0.0);
         e.slow_left = (e.slow_left - dt).max(0.0);
         e.hit_flash = (e.hit_flash - dt).max(0.0);
+        let knocked = e.knock > 0.0 && !boss;
+        e.knock = (e.knock - dt).max(0.0);
 
         let mut pos = xf.translation;
         if rules::flat_dist(pos, hero_pos) > LEASH {
@@ -254,6 +278,10 @@ fn move_enemies(
             }
         }
         let mut new_pos = next + push.clamp_length_max(speed.max(1.0) * dt);
+        if knocked {
+            let away = (pos - hero_pos).with_y(0.0).normalize_or_zero();
+            new_pos = pos + away * KNOCK_SPEED * dt;
+        }
         // Walls stop enemies near the hero too (far ones are off screen and only cost).
         if rules::flat_dist(pos, hero_pos) < COLLIDE_WITHIN {
             let shape = shape.get_or_insert_with(super::collide::body);
@@ -271,7 +299,7 @@ fn move_enemies(
             xf.rotation = Quat::from_rotation_y(yaw);
         }
         xf.translation = new_pos;
-        xf.scale = Vec3::splat(if e.hit_flash > 0.0 { 1.15 } else { 1.0 });
+        xf.scale = Vec3::splat(hit_scale(e.hit_flash));
     }
 }
 

@@ -103,10 +103,11 @@ struct Target {
     pos: Vec3,
 }
 
-/// One hit on an enemy: the passives' damage bonus and a crit roll.
-pub fn strike(enemy: &mut Enemy, base: f32, stats: &Stats, rng: &mut Rng) {
+/// One hit on an enemy by `skill`: the passives' damage bonus and a crit roll.
+pub fn strike(enemy: &mut Enemy, base: f32, stats: &Stats, rng: &mut Rng, skill: SkillId) {
     let (dmg, crit) = rules::hit_damage(base, stats, rng.f32());
     enemy.strike(dmg, crit);
+    enemy.took_skill = Some(skill);
 }
 
 /// How a skill's projectile behaves on hit.
@@ -228,7 +229,7 @@ fn cast_skills(
                 } else {
                     for t in hit {
                         if let Ok((_, _, mut e)) = enemies.get_mut(t.entity) {
-                            strike(&mut e, s.damage, &stats, rng);
+                            strike(&mut e, s.damage, &stats, rng, id);
                             if id == SkillId::FrostNova {
                                 e.freeze(s.duration);
                             }
@@ -500,7 +501,7 @@ fn move_projectiles(
                             exf.translation + Vec3::Y * CAST_HEIGHT,
                             0.0,
                         );
-                        strike(&mut en, p.damage, &stats, rng);
+                        strike(&mut en, p.damage, &stats, rng, p.skill);
                         match on_hit {
                             OnHit::Chill(slow, secs) => en.chill(slow, secs),
                             OnHit::Freeze(slow, secs) => {
@@ -525,7 +526,7 @@ fn move_projectiles(
                     let d = rules::flat_dist(exf.translation, pos);
                     let dmg = rules::blast_damage(p.damage, (d - en.radius).max(0.0), radius);
                     if dmg > 0.0 && en.alive() {
-                        strike(&mut en, dmg, &stats, rng);
+                        strike(&mut en, dmg, &stats, rng, p.skill);
                     }
                 }
                 let ground = pos - Vec3::Y * CAST_HEIGHT;
@@ -592,7 +593,7 @@ fn tick_zones(
                 if e.alive()
                     && rules::flat_dist(exf.translation, zxf.translation) <= z.radius + e.radius
                 {
-                    strike(&mut e, z.damage, &stats, rng);
+                    strike(&mut e, z.damage, &stats, rng, z.skill);
                     if z.slow > 0.0 {
                         e.chill(z.slow, z.tick + 0.3);
                     }

@@ -31,6 +31,33 @@ pub const PLATE_BORDER: &str = "Interface\\Tooltips\\Nameplate-Border";
 pub const DIALOG_BACKGROUND: &str = "Interface\\DialogFrame\\UI-DialogBox-Background";
 pub const TOOLTIP_BACKGROUND: &str = "Interface\\Tooltips\\UI-Tooltip-Background";
 pub const SLOT_FRAME: &str = "Interface\\Buttons\\UI-Quickslot2";
+/// The player frame (the target frame, mirrored), the class icons, the action bar and its
+/// gryphons, the minimap's ring and arrow, the boss skull.
+pub const TARGET_FRAME: &str = "Interface\\TargetingFrame\\UI-TargetingFrame";
+pub const CLASS_ICONS: &str = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes";
+pub const MAIN_BAR: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf";
+pub const END_CAP: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf";
+pub const MINIMAP_BORDER: &str = "Interface\\Minimap\\UI-Minimap-Border";
+pub const MINIMAP_ARROW: &str = "Interface\\Minimap\\MinimapArrow";
+pub const BOSS_SKULL: &str = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull";
+/// Every interface texture loaded at start.
+pub const UI_TEXTURES: [&str; 15] = [
+    STATUS_BAR,
+    PLATE_BORDER,
+    DIALOG_BACKGROUND,
+    TOOLTIP_BACKGROUND,
+    SLOT_FRAME,
+    TALENT_FROST,
+    TALENT_FIRE,
+    TALENT_ARCANE,
+    TARGET_FRAME,
+    CLASS_ICONS,
+    MAIN_BAR,
+    END_CAP,
+    MINIMAP_BORDER,
+    MINIMAP_ARROW,
+    BOSS_SKULL,
+];
 /// The mage talent trees' paintings (their top-left piece), behind the level-up cards' icons.
 pub const TALENT_FROST: &str = "Interface\\TalentFrame\\MageFrost-TopLeft";
 pub const TALENT_FIRE: &str = "Interface\\TalentFrame\\MageFire-TopLeft";
@@ -276,16 +303,7 @@ fn load_art(
         info!("rnsurvivors: no WoW data, plain UI");
         return;
     };
-    for path in [
-        STATUS_BAR,
-        PLATE_BORDER,
-        DIALOG_BACKGROUND,
-        TOOLTIP_BACKGROUND,
-        SLOT_FRAME,
-        TALENT_FROST,
-        TALENT_FIRE,
-        TALENT_ARCANE,
-    ] {
+    for path in UI_TEXTURES {
         match wa.sprite_texture(path, &mut images) {
             Some(h) => {
                 art.ui.insert(path, h);
@@ -560,16 +578,7 @@ fn write_report(art: &WowArt) {
         let _ = writeln!(out, "[{}] {:?}: {ok}", d.name, d.icon_spell);
     }
     let _ = writeln!(out, "\n== Arayüz dokuları ==");
-    for path in [
-        STATUS_BAR,
-        PLATE_BORDER,
-        DIALOG_BACKGROUND,
-        TOOLTIP_BACKGROUND,
-        SLOT_FRAME,
-        TALENT_FROST,
-        TALENT_FIRE,
-        TALENT_ARCANE,
-    ] {
+    for path in UI_TEXTURES {
         let ok = if art.ui.contains_key(path) {
             "var"
         } else {
