@@ -10,6 +10,7 @@ pub mod abilities;
 pub mod art;
 pub mod autopilot;
 pub mod boss_hud;
+pub mod boss_portrait;
 pub mod boss_rules;
 pub mod bosses;
 pub mod cards;
@@ -117,7 +118,11 @@ impl Plugin for CombatPlugin {
                 screen_fx::ScreenFxPlugin,
                 minimap::MinimapPlugin,
             ))
-            .add_plugins((abilities::AbilitiesPlugin, char_view::CharViewPlugin));
+            .add_plugins((
+                abilities::AbilitiesPlugin,
+                char_view::CharViewPlugin,
+                boss_portrait::BossPortraitPlugin,
+            ));
     }
 }
 

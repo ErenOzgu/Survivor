@@ -103,6 +103,9 @@ oynanabilir bir savaş döngüsü kurar:
     hasarı 4 yarda içindekilere verir. Patlamanın öldürdükleri yeniden patlamaz.
   - **Kanatan Ölüm:** ölen düşman 5 yarda içindekileri kanatır; 5 sn'de kendi en yüksek
     canlarının %8'i (seviye başına) kadar hasar alırlar.
+- **Boss pusulası** (küçük haritanın altında): hedefe dönen küçük bir ok, elit için yanında
+  canlı 3D portresi (bossun modelinin bir kopyası kahramanın altında, dünyadan görünmeyen bir
+  yerde durur, küçük bir kamera başını çeker).
 - **Hareket:** Space zıplar; S geri geri yürür (%60 hızla, ileri bakarak).
 - **Karakter penceresi (I):** WoW'un kendi karakter penceresi (dokuları istemciden): solda ve
   sağda eşya yuvaları (oyunun 6 yuvası dolu, yüzük/kolye/pelerin gibi diğerleri ileride için soluk),

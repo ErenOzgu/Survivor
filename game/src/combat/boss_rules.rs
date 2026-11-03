@@ -262,6 +262,13 @@ pub fn barrage_spots(center: Vec3, count: u32, spread: f32, angle0: f32) -> Vec<
 
 /// Where something lies from the hero, as seen on screen with the camera turned to `cam_yaw`
 /// (`yaw` 0 looks along `-Z`, as in `motion`): one of eight Turkish directions.
+/// The clockwise angle on screen (0 = straight up, ahead of the camera) of a world `offset`.
+pub fn screen_angle(offset: Vec3, cam_yaw: f32) -> f32 {
+    let rot = Quat::from_rotation_y(cam_yaw);
+    let (f, r) = (offset.dot(rot * Vec3::NEG_Z), offset.dot(rot * Vec3::X));
+    r.atan2(f)
+}
+
 pub fn screen_direction(offset: Vec3, cam_yaw: f32) -> &'static str {
     let rot = Quat::from_rotation_y(cam_yaw);
     let forward = rot * Vec3::NEG_Z;

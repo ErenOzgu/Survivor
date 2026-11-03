@@ -154,10 +154,44 @@ fn spawn_boss_hud(mut commands: Commands, font: Res<UiFont>) {
                 // Under the minimap.
                 top: Val::Px(200.0),
                 right: Val::Px(16.0),
+                align_items: AlignItems::Center,
                 ..default()
             },
         ))
         .with_children(|p| {
+            // The target's 3D portrait (an elite), an arrow toward it, the lines.
+            p.spawn((
+                Node {
+                    width: Val::Px(58.0),
+                    height: Val::Px(58.0),
+                    border: UiRect::all(Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Percent(50.0)),
+                    margin: UiRect::right(Val::Px(6.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::srgb(1.0, 0.75, 0.2)),
+                BackgroundColor(Color::srgb(0.05, 0.04, 0.03)),
+                Visibility::Hidden,
+                super::boss_portrait::PointerPortrait,
+            ));
+            p.spawn((
+                Node {
+                    width: Val::Px(14.0),
+                    height: Val::Px(14.0),
+                    margin: UiRect::right(Val::Px(10.0)),
+                    border_radius: BorderRadius::new(
+                        Val::Px(0.0),
+                        Val::Px(7.0),
+                        Val::Px(7.0),
+                        Val::Px(7.0),
+                    ),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(1.0, 0.85, 0.3)),
+                UiTransform::default(),
+                Visibility::Hidden,
+                super::boss_portrait::PointerArrow,
+            ));
             p.spawn((
                 Text::new(""),
                 font.text(18.0),
@@ -327,6 +361,7 @@ fn update_boss_texts(
     cams: Query<&FollowCam>,
     portals: Query<&GlobalTransform, With<Portal>>,
     bosses: Query<&Boss>,
+    mut aim: ResMut<super::boss_portrait::PointerAim>,
     mut texts: ParamSet<(
         Query<&mut Text, With<BannerText>>,
         Query<&mut Text, With<CalloutText>>,
@@ -353,15 +388,24 @@ fn update_boss_texts(
     }
 
     let mut pointer = String::new();
+    *aim = Default::default();
     if let (Ok(hero), Ok(cam)) = (heroes.single(), cams.single()) {
         let hero = hero.translation;
-        let mut line = |name: &str, at: Vec3| {
+        let mut first = true;
+        let mut line = |name: &str, at: Vec3, boss: Option<usize>| {
             let d = flat_dist(at, hero);
-            let dir = screen_direction((at - hero).with_y(0.0), cam.yaw);
+            let off = (at - hero).with_y(0.0);
+            let dir = screen_direction(off, cam.yaw);
             pointer.push_str(&format!("{name}: {d:.0} yard, {dir}\n"));
+            // The arrow and the portrait follow the first line.
+            if first {
+                first = false;
+                aim.angle = Some(super::boss_rules::screen_angle(off, cam.yaw));
+                aim.boss = boss;
+            }
         };
         for p in &portals {
-            line("Portal", p.translation());
+            line("Portal", p.translation(), None);
         }
         for (idx, def) in ELWYNN_BOSSES.iter().enumerate() {
             let awake = bosses.iter().any(|b| b.idx == idx && b.awake);
@@ -369,7 +413,7 @@ fn update_boss_texts(
                 continue;
             }
             if let Some(spot) = guard_spot(def, hero.y) {
-                line(&format!("Elit {}", def.name()), spot);
+                line(&format!("Elit {}", def.name()), spot, Some(idx));
             }
         }
     }
