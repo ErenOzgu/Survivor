@@ -20,17 +20,20 @@ pub mod gear_ui;
 pub mod hero;
 pub mod hud;
 pub mod menu;
+pub mod minimap;
 pub mod numbers;
 pub mod pause;
 pub mod plates;
 pub mod portal;
 pub mod rules;
 pub mod save;
+pub mod screen_fx;
 pub mod shake;
 pub mod skills;
 pub mod sound;
 pub mod talent_ui;
 pub mod visuals;
+pub mod world_look;
 pub mod xp;
 
 use bevy::prelude::*;
@@ -108,6 +111,9 @@ impl Plugin for CombatPlugin {
                 collide::CollidePlugin,
                 sound::SoundPlugin,
                 shake::ShakePlugin,
+                world_look::WorldLookPlugin,
+                screen_fx::ScreenFxPlugin,
+                minimap::MinimapPlugin,
             ));
     }
 }

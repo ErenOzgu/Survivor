@@ -32,16 +32,15 @@ pub const DIALOG_BACKGROUND: &str = "Interface\\DialogFrame\\UI-DialogBox-Backgr
 pub const TOOLTIP_BACKGROUND: &str = "Interface\\Tooltips\\UI-Tooltip-Background";
 pub const SLOT_FRAME: &str = "Interface\\Buttons\\UI-Quickslot2";
 /// The player frame (the target frame, mirrored), the class icons, the action bar and its
-/// gryphons, the minimap's ring and arrow, the boss skull.
+/// gryphons, the minimap's ring, the boss skull.
 pub const TARGET_FRAME: &str = "Interface\\TargetingFrame\\UI-TargetingFrame";
 pub const CLASS_ICONS: &str = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes";
 pub const MAIN_BAR: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf";
 pub const END_CAP: &str = "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf";
 pub const MINIMAP_BORDER: &str = "Interface\\Minimap\\UI-Minimap-Border";
-pub const MINIMAP_ARROW: &str = "Interface\\Minimap\\MinimapArrow";
 pub const BOSS_SKULL: &str = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull";
 /// Every interface texture loaded at start.
-pub const UI_TEXTURES: [&str; 15] = [
+pub const UI_TEXTURES: [&str; 14] = [
     STATUS_BAR,
     PLATE_BORDER,
     DIALOG_BACKGROUND,
@@ -55,7 +54,6 @@ pub const UI_TEXTURES: [&str; 15] = [
     MAIN_BAR,
     END_CAP,
     MINIMAP_BORDER,
-    MINIMAP_ARROW,
     BOSS_SKULL,
 ];
 /// The mage talent trees' paintings (their top-left piece), behind the level-up cards' icons.

@@ -151,7 +151,8 @@ fn spawn_boss_hud(mut commands: Commands, font: Res<UiFont>) {
             Name::new("hud pointer"),
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(18.0),
+                // Under the minimap.
+                top: Val::Px(200.0),
                 right: Val::Px(16.0),
                 ..default()
             },

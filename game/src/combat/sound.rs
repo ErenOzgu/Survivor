@@ -169,6 +169,13 @@ impl Sound {
         bytes
     }
 
+    /// Plays a client sound file (`Sound\\…wav`) once, at `volume` (0–1) of the effects level.
+    pub fn play_file(&mut self, wa: &WorldAssets, path: &str, volume: f32) {
+        if let Some(bytes) = self.file(wa, path) {
+            let _ = self.tx.send(Cmd::Sfx(bytes, volume * self.sfx_volume));
+        }
+    }
+
     /// Plays one variation of `kit` now, if it did not just play.
     fn play_kit(&mut self, wa: &WorldAssets, kit: u32, now: f32) {
         if !may_play(self.last_played.get(&kit).copied(), now) {

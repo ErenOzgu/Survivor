@@ -72,6 +72,31 @@ oynanabilir bir savaş döngüsü kurar:
   istemcinin yükleme ekranlarından, Buz'a Naxxramas, Ateş'e Molten Core, Arkan'a Dire Maul) ya
   da `agac` (büyücü yetenek ağacı resimleri). `RNS_CARD_ART` aynı işi görür.
 
+### Görünüm
+
+- **Arayüz** istemcinin kendi çerçeveleriyle: sol üstte oyuncu çerçevesi (büyücü portresi, seviye,
+  can, XP), altta grifonlu aksiyon çubuğu (üstünde XP şeridi; skill ikonları, seviyeleri, dolum
+  gölgesi), üstte zaman ve öldürme plakası. Doku bulunamazsa düz paneller çıkar.
+- **Küçük harita** sağ üstte: bulunulan yerin istemcideki harita resmi, WoW halkası içinde, kuzey
+  yukarıda. Kahraman sarı ok; düşmanlar kırmızı, bosslar kurukafa, sandık altın, portal mor nokta.
+- **Vuruş hissi:** vurulan düşman bir an şişer, kritik vuruş sıradan düşmanı geri iter (bosslar
+  durur). Kahraman vurulunca ve kritiklerde kamera sarsılır.
+- **Hasar sayıları** vuran okulun renginde (buz mavi, ateş turuncu, arkan mor), büyük çıkıp oturur,
+  yay çizerek yükselir; kritik daha büyük ve "!" ile.
+- **Seviye atlama:** kahramanın üstünde WoW'un altın ışık sütunu (`LevelUp.mdx`) ve sesi. Can
+  %35'in altına inince ekran kenarları kırmızı atar, can azaldıkça hızlanır.
+- **Dünya:** kahramanın ve düşmanların altında yumuşak gölge. Koşu öğleden sonra başlar, bosslar
+  gelirken güneş batar.
+
+Ayar dosyasında (`%APPDATA%\Rnsurvivors\ayarlar.txt`):
+
+| Anahtar | Değer | Ne yapar |
+|---|---|---|
+| `sarsinti` | `0`–`1` (varsayılan `1`) | Kamera sarsıntısı; `0` kapatır |
+| `saat` | `akis` (varsayılan), `gunduz`, `gece`, `18:30` | Günün saati |
+| `kamera` | `yakin`, `orta` (varsayılan), `uzak` | Kamera uzaklığı ve açısı |
+| `kart` | `yukleme` (varsayılan), `agac` | Seviye kartlarının resmi |
+
 ### Düşmanlar
 
 | Düşman | Ne zaman | Ne yapar |

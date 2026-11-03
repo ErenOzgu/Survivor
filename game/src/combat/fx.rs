@@ -85,6 +85,13 @@ pub struct Burst {
     left: f32,
 }
 
+impl Burst {
+    /// An effect that is removed after `secs`.
+    pub fn lasting(secs: f32) -> Self {
+        Self { left: secs }
+    }
+}
+
 /// What kind of burst.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BurstKind {
