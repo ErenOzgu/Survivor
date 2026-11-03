@@ -288,7 +288,7 @@ fn held_item(
 }
 
 /// Build each pending model whose assets are ready.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn finish_models(
     mut commands: Commands,
     pending: Query<(Entity, &Pending)>,
