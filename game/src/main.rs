@@ -6,6 +6,7 @@
 mod combat;
 mod config;
 mod content;
+mod crashlog;
 mod game;
 mod models;
 mod motion;
@@ -16,6 +17,7 @@ use bevy::prelude::*;
 use benilla_world::build_id::BuildId;
 
 fn main() -> AppExit {
+    crashlog::install();
     // A dev build also looks for `<repo>/WoW/Data` (a link to an install, git-ignored).
     benilla_formats::set_project_folder(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
     let mut app = App::new();
@@ -33,6 +35,10 @@ fn main() -> AppExit {
     // one run names every missing resource.
     if std::env::var("RNS_SURVEY").as_deref() == Ok("1") {
         warn!("rnsurvivors: SURVEY mode — unmet dependencies are warnings, not panics");
+        app.set_error_handler(bevy::ecs::error::warn);
+    } else if std::env::var("RNS_STRICT").as_deref() != Ok("1") {
+        // A player's game logs a failed system or command (say, one aimed at an entity that
+        // just died) and plays on rather than closing; `RNS_STRICT=1` keeps Bevy's panic.
         app.set_error_handler(bevy::ecs::error::warn);
     }
 

@@ -3,7 +3,7 @@
 
 use bevy::camera::{PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
+use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::render::view::Hdr;
 
@@ -21,6 +21,10 @@ const NEAR: f32 = benilla_world::view::NEARCLIP_DEFAULT;
 const FOVY: f32 = 0.96;
 /// Camera turn speed for Q/E, radians per second.
 const TURN_SPEED: f32 = 1.8;
+/// Right-mouse look: radians per pixel of mouse motion, and the pitch range (looking down).
+const MOUSE_TURN: f32 = 0.006;
+const MOUSE_PITCH: f32 = 0.004;
+const PITCH_RANGE: (f32, f32) = (-1.4, -0.25);
 
 /// The env var overriding the hero's run speed (yards per second).
 pub const SPEED_VAR: &str = "RNS_SPEED";
@@ -43,9 +47,7 @@ impl Plugin for GamePlugin {
             )
             .add_systems(
                 Update,
-                (move_hero, follow_camera)
-                    .chain()
-                    .in_set(WorldStage::Input),
+                (move_hero, follow_camera).chain().in_set(WorldStage::Input),
             );
     }
 }
@@ -63,6 +65,10 @@ pub struct HeroSpeed(pub f32);
 pub struct Hero {
     /// Standing on streamed terrain; false until the ground under it is resident.
     pub grounded: bool,
+    /// The current velocity (yards per second), easing toward the keys' direction.
+    pub vel: Vec3,
+    /// Where the body faces (yaw, radians), turning smoothly toward the goal.
+    pub facing: f32,
 }
 
 /// The follow camera's state.
@@ -150,10 +156,14 @@ fn spawn_camera(
     ));
 }
 
-/// WASD moves the hero relative to the camera; it follows the terrain heightfield.
+/// WASD moves the hero relative to the camera, easing into each new direction; the body turns
+/// smoothly toward where it goes. While the right mouse button is held it faces the camera's
+/// forward (as in WoW) unless it is walking another way. It follows the terrain heightfield.
+#[allow(clippy::too_many_arguments)]
 fn move_hero(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     speed: Res<HeroSpeed>,
     streamer: Option<Res<TerrainStreamer>>,
     adt_tiles: Option<Res<Assets<AdtTile>>>,
@@ -164,6 +174,7 @@ fn move_hero(
         return;
     };
     let yaw = cams.single().map(|c| c.yaw).unwrap_or(0.0);
+    let dt = time.delta_secs();
 
     let mut input = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
@@ -178,13 +189,24 @@ fn move_hero(
     if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
         input.x -= 1.0;
     }
+    // Both mouse buttons held: run forward, as in WoW.
+    if mouse.pressed(MouseButton::Right) && mouse.pressed(MouseButton::Left) {
+        input.y = input.y.max(1.0);
+    }
     let dir = motion::move_dir(input, yaw);
     // No walking off into unstreamed void: hold still until the ground is under the hero.
     if hero.grounded {
-        xf.translation = motion::step(xf.translation, dir, speed.0, time.delta_secs());
-        if let Some(face) = motion::facing_yaw(dir) {
-            xf.rotation = Quat::from_rotation_y(face);
+        hero.vel = motion::approach(hero.vel, dir * speed.0, motion::HERO_ACCEL, dt);
+        xf.translation += hero.vel * dt;
+        let goal = motion::facing_yaw(hero.vel)
+            .filter(|_| hero.vel.length() > 0.5)
+            .or_else(|| mouse.pressed(MouseButton::Right).then_some(yaw));
+        if let Some(goal) = goal {
+            hero.facing = motion::turn_toward(hero.facing, goal, motion::HERO_TURN * dt);
         }
+        xf.rotation = Quat::from_rotation_y(hero.facing);
+    } else {
+        hero.vel = Vec3::ZERO;
     }
 
     let ground = match (&streamer, &adt_tiles) {
@@ -200,12 +222,16 @@ fn move_hero(
 }
 
 /// The camera follows the hero from behind and above; the wheel zooms, Q/E turn it.
+#[allow(clippy::too_many_arguments)]
 fn follow_camera(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    motion_in: Res<AccumulatedMouseMotion>,
     heroes: Query<&Transform, (With<Hero>, Without<FollowCam>)>,
     mut cams: Query<(&mut Transform, &mut FollowCam)>,
+    mut cursors: Query<&mut bevy::window::CursorOptions>,
 ) {
     let (Ok(hero), Ok((mut xf, mut cam))) = (heroes.single(), cams.single_mut()) else {
         return;
@@ -216,6 +242,23 @@ fn follow_camera(
     };
     if lines != 0.0 {
         cam.distance = motion::zoom(cam.distance, lines);
+    }
+    // Right mouse held: the mouse turns the camera (and so the hero), the cursor hides.
+    let looking = mouse.pressed(MouseButton::Right);
+    if looking {
+        cam.yaw -= motion_in.delta.x * MOUSE_TURN;
+        cam.pitch =
+            (cam.pitch - motion_in.delta.y * MOUSE_PITCH).clamp(PITCH_RANGE.0, PITCH_RANGE.1);
+    }
+    if mouse.just_pressed(MouseButton::Right) || mouse.just_released(MouseButton::Right) {
+        for mut c in &mut cursors {
+            c.visible = !looking;
+            c.grab_mode = if looking {
+                bevy::window::CursorGrabMode::Confined
+            } else {
+                bevy::window::CursorGrabMode::None
+            };
+        }
     }
     if keys.pressed(KeyCode::KeyQ) {
         cam.yaw += TURN_SPEED * time.delta_secs();

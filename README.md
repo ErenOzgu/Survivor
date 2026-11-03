@@ -85,6 +85,15 @@ oynanabilir bir savaş döngüsü kurar:
   yay çizerek yükselir; kritik daha büyük ve "!" ile.
 - **Seviye atlama:** kahramanın üstünde WoW'un altın ışık sütunu (`LevelUp.mdx`) ve sesi. Can
   %35'in altına inince ekran kenarları kırmızı atar, can azaldıkça hızlanır.
+- **Hareket:** kahraman tuş değişince yeni yöne yumuşakça geçer, gövdesi gittiği yöne döner (8
+  yöne kilitli değil). **Sağ fare basılıyken** fare kamerayı ve kahramanı çevirir (imleç gizlenir),
+  iki tuş birden basılıysa ileri koşar; WoW'daki gibi.
+- **Düşman can barları** WoW 1.12 nameplate'i: istemcinin `Nameplate-Border` çerçevesi, içinde
+  kırmızı can barı, üstünde adı, sağdaki yuvada seviye. Hasar alan düşmanda görünür.
+- **Çökme kaydı:** oyun çökerse hata `%APPDATA%\Rnsurvivors\rnsurvivors-cokme.txt`'e yazılır;
+  launcher son oyunun bütün konsol çıktısını `rnsurvivors-log.txt`'te tutar. Bir sistem hatası
+  (örneğin az önce ölen düşmana giden bir komut) artık oyunu kapatmaz, loga yazar
+  (`RNS_STRICT=1` eski davranış).
 - **Dünya:** kahramanın ve düşmanların altında yumuşak gölge. Koşu öğleden sonra başlar, bosslar
   gelirken güneş batar.
 
