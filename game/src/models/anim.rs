@@ -19,6 +19,7 @@ pub mod ids {
     pub const RUN: u16 = 5;
     pub const DEAD: u16 = 6;
     pub const STAND_WOUND: u16 = 8;
+    pub const WALK_BACKWARDS: u16 = 13;
     pub const COMBAT_WOUND: u16 = 9;
     pub const ATTACK_UNARMED: u16 = 16;
     pub const ATTACK_1H: u16 = 17;
@@ -45,6 +46,8 @@ pub enum AnimState {
     Death,
     /// In the air (a jump): held until the feet are down again.
     Jump,
+    /// Walking backwards (S), facing forward.
+    Backpedal,
 }
 
 impl AnimState {
@@ -60,6 +63,7 @@ impl AnimState {
             AnimState::Hit => &[COMBAT_WOUND, STAND_WOUND],
             AnimState::Death => &[DEATH, DEAD],
             AnimState::Jump => &[JUMP, JUMP_START, STAND],
+            AnimState::Backpedal => &[WALK_BACKWARDS, WALK],
         }
     }
 
@@ -67,7 +71,11 @@ impl AnimState {
     pub fn looping(self) -> bool {
         matches!(
             self,
-            AnimState::Idle | AnimState::Walk | AnimState::Run | AnimState::Jump
+            AnimState::Idle
+                | AnimState::Walk
+                | AnimState::Run
+                | AnimState::Jump
+                | AnimState::Backpedal
         )
     }
 

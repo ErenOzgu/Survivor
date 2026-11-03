@@ -189,14 +189,6 @@ fn move_hero(
     let was_air = hero.air > 0.0 || hero.rise > 0.0;
     (hero.air, hero.rise) = motion::jump_step(hero.air, hero.rise, dt);
     let in_air = hero.air > 0.0 || hero.rise > 0.0;
-    if let Some(mut anim) = anim {
-        use crate::models::AnimState;
-        if in_air {
-            anim.state = AnimState::Jump;
-        } else if was_air && anim.state == AnimState::Jump {
-            anim.state = AnimState::Idle;
-        }
-    }
 
     let mut input = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
@@ -216,19 +208,43 @@ fn move_hero(
         input.y = input.y.max(1.0);
     }
     let dir = motion::move_dir(input, yaw);
+    // Back (S) walks backwards, slower, still facing forward.
+    let back = motion::backpedals(input);
+    let pace = if back {
+        speed.0 * motion::BACKPEDAL_MUL
+    } else {
+        speed.0
+    };
     // No walking off into unstreamed void: hold still until the ground is under the hero.
     if hero.grounded {
-        hero.vel = motion::approach(hero.vel, dir * speed.0, motion::HERO_ACCEL, dt);
+        hero.vel = motion::approach(hero.vel, dir * pace, motion::HERO_ACCEL, dt);
         xf.translation += hero.vel * dt;
-        let goal = motion::facing_yaw(hero.vel)
-            .filter(|_| hero.vel.length() > 0.5)
-            .or_else(|| mouse.pressed(MouseButton::Right).then_some(yaw));
+        let goal = if back {
+            // Face away from the way it goes (the camera's forward, turned by A/D).
+            motion::facing_yaw(-hero.vel).or(Some(yaw))
+        } else {
+            motion::facing_yaw(hero.vel)
+                .filter(|_| hero.vel.length() > 0.5)
+                .or_else(|| mouse.pressed(MouseButton::Right).then_some(yaw))
+        };
         if let Some(goal) = goal {
             hero.facing = motion::turn_toward(hero.facing, goal, motion::HERO_TURN * dt);
         }
         xf.rotation = Quat::from_rotation_y(hero.facing);
     } else {
         hero.vel = Vec3::ZERO;
+    }
+
+    if let Some(mut anim) = anim {
+        use crate::models::AnimState;
+        let backing = back && hero.vel.length() > 0.5;
+        if in_air {
+            anim.state = AnimState::Jump;
+        } else if backing {
+            anim.state = AnimState::Backpedal;
+        } else if (was_air && anim.state == AnimState::Jump) || anim.state == AnimState::Backpedal {
+            anim.state = AnimState::Idle;
+        }
     }
 
     let ground = match (&streamer, &adt_tiles) {

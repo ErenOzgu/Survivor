@@ -54,6 +54,14 @@ pub const HERO_ACCEL: f32 = 45.0;
 /// How fast the hero's body turns toward where it goes (radians per second).
 pub const HERO_TURN: f32 = 11.0;
 
+/// Walking backwards (S without W) is this much of the run speed, as in WoW.
+pub const BACKPEDAL_MUL: f32 = 0.6;
+
+/// Whether the keys walk backwards: back held, forward not.
+pub fn backpedals(input: Vec2) -> bool {
+    input.y < 0.0
+}
+
 /// A jump's take-off speed (yards per second) and the pull back down: about 1.3 yards high,
 /// two thirds of a second in the air.
 pub const JUMP_SPEED: f32 = 8.0;
