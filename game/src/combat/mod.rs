@@ -14,6 +14,7 @@ pub mod bosses;
 pub mod cards;
 pub mod enemies;
 pub mod flat;
+pub mod fx;
 pub mod gear_ui;
 pub mod hero;
 pub mod hud;
@@ -100,6 +101,7 @@ impl Plugin for CombatPlugin {
                 autopilot::AutopilotPlugin,
                 gear_ui::GearUiPlugin,
                 talent_ui::TalentUiPlugin,
+                fx::FxPlugin,
             ));
     }
 }

@@ -69,6 +69,8 @@ pub(super) struct Pending {
     body: Option<CharBody>,
     items: Vec<PendingItem>,
     since: f32,
+    /// A spell effect model: its particle emitters and ribbons are spawned too.
+    effect: bool,
 }
 
 /// Resolve each new request against the tables; it becomes [`Pending`] or fails.
@@ -141,9 +143,21 @@ fn resolve(
                 body,
                 items: Vec::new(),
                 since: now,
+                effect: false,
             })
         }
         ModelRequest::Character(look) => resolve_character(look, t, asset_server, now),
+        ModelRequest::Effect { path, scale } => Ok(Pending {
+            handle: asset_server.load(m2_url(path)),
+            dir: paths::model_dir(path).to_string(),
+            path: path.clone(),
+            scale: *scale,
+            skins: [None, None, None],
+            body: None,
+            items: Vec::new(),
+            since: now,
+            effect: true,
+        }),
     }
 }
 
@@ -238,6 +252,7 @@ fn resolve_character(
         }),
         items: held,
         since: now,
+        effect: false,
     })
 }
 
@@ -577,6 +592,39 @@ fn spawn_body(
             if UvLoops::of(sub).animates() {
                 part.insert(AnimMatPart);
             }
+        }
+    }
+
+    // A spell effect's particles and ribbons, riding the model root (as the client's effect
+    // instances do, minus per-bone placement: spell models emit near their origin). When the
+    // owner goes (a missile hits), the particles drain in place instead of vanishing.
+    if p.effect {
+        for em in &model.emitters {
+            benilla_world::particles::spawn_emitter(
+                commands,
+                em,
+                Transform::IDENTITY,
+                benilla_world::particles::EmitterFrames {
+                    owner: Some((root, [0.0; 3])),
+                    anchor: Some(root),
+                    alpha: None,
+                    light_node: None,
+                    on_owner_loss: benilla_world::particles::OwnerLoss::Drain,
+                },
+                benilla_world::particles::EmitClock::Effect(None),
+            );
+        }
+        for rb in &model.ribbons {
+            benilla_world::ribbons::spawn_ribbon(
+                commands,
+                rb,
+                root,
+                false,
+                p.scale,
+                benilla_world::ribbons::RibbonSeq::Fixed(0),
+                None,
+                None,
+            );
         }
     }
 

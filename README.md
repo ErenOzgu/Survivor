@@ -32,7 +32,12 @@ oynanabilir bir savaş döngüsü kurar:
   ölünce ölüm animasyonuyla düşer, biraz yerde kalır, sonra toprağa gömülür. Kahraman büyü
   attıkça büyü atma animasyonu yapar. Model yüklenene kadar (ya da veri yoksa) eski yer tutucu
   şekiller görünür: kobold kahverengi kapsül, kurt gri uzun kutu, örümcek mor yassı küre.
-- Büyüler hâlâ **yer tutucu**: renkli küre/ok, yer büyüleri yarı saydam diskler.
+- **Büyü efektleri WoW'dan:** her skill'in füzesi, çarpma efekti, yer alanı ve patlaması
+  istemcinin büyü görsel tablolarından (`SpellVisual`) seçilen `Spells\*.mdx` modelleri,
+  parçacıkları ve izleriyle çizilir: Frostbolt'un buz oku, Fireball/Pyroblast'ın ateş topu ve
+  patlaması, Arcane Missile füzeleri, Frost Nova'nın buz halkası ve dondurduğu düşmanlardaki buz,
+  Blizzard ve Flamestrike alanları, Arcane Explosion. XP küreleri yeşil bir büyü küresi. Model
+  bulunamazsa renkli yer tutucu şekiller kalır; kalabalık sahnede efekt sayısı sınırlıdır.
 
 ### Mage skill'leri
 

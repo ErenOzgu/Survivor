@@ -97,6 +97,8 @@ pub enum ModelRequest {
     Character(CharacterLook),
     /// A creature by its `CreatureDisplayInfo.dbc` id (character-model NPCs included).
     Creature { display_id: u32 },
+    /// A spell effect model (`Spells\\…mdx`), with its particles and ribbons.
+    Effect { path: String, scale: f32 },
 }
 
 /// Where an entity's model stands.

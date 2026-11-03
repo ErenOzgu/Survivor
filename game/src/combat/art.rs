@@ -9,7 +9,7 @@ use bevy::prelude::*;
 
 use benilla_assets::{LockRecover, WorldAssets};
 use benilla_formats::{
-    load_spell_catalog, load_spell_visual_catalog, SpellCatalog, SpellVisualCatalog,
+    load_spell_catalog, load_spell_visual_catalog, SpellCatalog, SpellVisualCatalog, VisualStages,
 };
 
 use crate::content::passives::PassiveId;
@@ -57,6 +57,91 @@ pub struct WowArt {
     pub spells: Option<SpellCatalog>,
     /// The spell visual tables (missile models, cast and impact kits), for the spell effects.
     pub visuals: Option<SpellVisualCatalog>,
+    /// Each skill's effect models, resolved from the visual tables.
+    pub fx: HashMap<SkillId, SkillFx>,
+    /// The XP orb's look: a green missile model from the client.
+    pub orb_model: Option<String>,
+}
+
+/// The effect models a skill shows (paths of `Spells\\…mdx`, as the client names them).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SkillFx {
+    /// What flies.
+    pub missile: Option<String>,
+    /// Where a hit lands (on the enemy).
+    pub impact: Option<String>,
+    /// On the ground: the area a skill covers, or its burst at the hero's feet.
+    pub area: Option<String>,
+    /// On what it leaves frozen.
+    pub state: Option<String>,
+}
+
+/// Attachment tags as the visual kits use them.
+const TAG_FEET: u16 = 0x13;
+const TAG_CHEST: u16 = 0x22;
+
+/// One visual's effect models, by role: `effect_path` gives an effect id's model, `kit` a kit's
+/// `(tag, effect id)` slots.
+pub fn visual_fx(
+    stages: &VisualStages,
+    effect_path: &dyn Fn(u32) -> Option<String>,
+    kit: &dyn Fn(u32) -> Vec<(u16, u32)>,
+) -> SkillFx {
+    let pick = |kit_id: u32, prefer: &[u16]| -> Option<String> {
+        if kit_id == 0 {
+            return None;
+        }
+        let slots = kit(kit_id);
+        prefer
+            .iter()
+            .find_map(|t| slots.iter().find(|(tag, _)| tag == t))
+            .or(slots.first())
+            .and_then(|(_, id)| effect_path(*id))
+    };
+    SkillFx {
+        missile: (stages.missile_model != 0)
+            .then(|| effect_path(stages.missile_model))
+            .flatten(),
+        impact: pick(stages.impact, &[TAG_CHEST, u16::MAX]),
+        area: (stages.area_effect != 0)
+            .then(|| effect_path(stages.area_effect))
+            .flatten()
+            .or_else(|| {
+                // A burst on the ground: the cast kit's feet or world slot only (not the hands).
+                let slots = if stages.cast == 0 {
+                    Vec::new()
+                } else {
+                    kit(stages.cast)
+                };
+                [TAG_FEET, u16::MAX]
+                    .iter()
+                    .find_map(|t| slots.iter().find(|(tag, _)| tag == t))
+                    .and_then(|(_, id)| effect_path(*id))
+            }),
+        state: pick(stages.state, &[u16::MAX, TAG_FEET]),
+    }
+}
+
+/// Where each skill borrows its effects from besides its own spell (Arcane Missiles' missile is
+/// the triggered "Arcane Missile"; an evolution takes its parent's).
+pub fn fx_sources(id: SkillId) -> &'static [&'static str] {
+    match id {
+        SkillId::ArcaneMissiles | SkillId::ArcaneStorm => &["Arcane Missile", "Arcane Missiles"],
+        SkillId::WinterBolts => &["Frostbolt", "Frost Nova"],
+        _ => &[],
+    }
+}
+
+/// Merges effect sets: the first that has each role wins.
+pub fn merge_fx(sets: impl Iterator<Item = SkillFx>) -> SkillFx {
+    let mut out = SkillFx::default();
+    for s in sets {
+        out.missile = out.missile.or(s.missile);
+        out.impact = out.impact.or(s.impact);
+        out.area = out.area.or(s.area);
+        out.state = out.state.or(s.state);
+    }
+    out
 }
 
 impl WowArt {
@@ -183,6 +268,33 @@ fn load_art(
         Ok(v) => art.visuals = Some(v),
         Err(e) => warn!("rnsurvivors: spell visuals unavailable ({e:#})"),
     }
+    // Effect models per skill: borrowed sources lead (the missile), then its own visual.
+    if let Some(v) = &art.visuals {
+        let path = |id: u32| v.effect_path(id).map(str::to_string);
+        let kit = |k: u32| v.kit(k).map(|k| k.effects().collect()).unwrap_or_default();
+        let fx_of = |spell_name: &str| -> SkillFx {
+            let rows = catalog
+                .iter()
+                .map(|(sid, d)| (sid, d.name.as_str(), d.rank.as_deref(), d.icon.as_deref()));
+            pick_spell(rows, spell_name)
+                .and_then(|sid| catalog.get(sid))
+                .and_then(|d| v.stages(d.visual))
+                .map(|st| visual_fx(st, &path, &kit))
+                .unwrap_or_default()
+        };
+        let mut fx = HashMap::new();
+        for id in SkillId::every() {
+            let own = fx_of(id.def().icon_spell);
+            let borrowed: Vec<SkillFx> = fx_sources(id).iter().map(|n| fx_of(n)).collect();
+            fx.insert(
+                id,
+                merge_fx(borrowed.into_iter().chain(std::iter::once(own))),
+            );
+        }
+        let orb = fx_of("Wrath").missile;
+        art.fx = fx;
+        art.orb_model = orb;
+    }
     art.spells = Some(catalog);
     write_report(&art);
 }
@@ -308,6 +420,20 @@ fn write_report(art: &WowArt) {
             }
         }
     }
+    let _ = writeln!(out, "\n== Kullanılan efektler ==");
+    for id in SkillId::every() {
+        let fx = art.fx.get(&id).cloned().unwrap_or_default();
+        let _ = writeln!(
+            out,
+            "[{}] füze {:?} · isabet {:?} · alan {:?} · durum {:?}",
+            id.def().name,
+            fx.missile,
+            fx.impact,
+            fx.area,
+            fx.state
+        );
+    }
+    let _ = writeln!(out, "XP küresi: {:?}", art.orb_model);
     let _ = writeln!(out, "\n== Pasifler ==");
     for p in PassiveId::ALL {
         let d = p.def();
@@ -409,6 +535,58 @@ mod tests {
             Some(846),
             "still a pick"
         );
+    }
+
+    #[test]
+    fn effects_are_picked_by_role() {
+        let paths: HashMap<u32, &str> = [
+            (1, "Spells\\Frostbolt.mdx"),
+            (2, "Spells\\Ice_Precast_Low_Hand.mdx"),
+            (3, "Spells\\Ice_ImpactDD_Med_Chest.mdx"),
+            (4, "Spells\\Frost_Nova_area.mdx"),
+            (5, "Spells\\Frost_Nova_state.mdx"),
+            (6, "Spells\\Ice_Precast_Uber_Head.mdx"),
+        ]
+        .into_iter()
+        .collect();
+        let kits: HashMap<u32, Vec<(u16, u32)>> = [
+            (10, vec![(0x15, 2), (0x16, 2)]),
+            (11, vec![(TAG_CHEST, 3)]),
+            (12, vec![(TAG_FEET, 4)]),
+            (13, vec![(0x14, 6), (u16::MAX, 5)]),
+        ]
+        .into_iter()
+        .collect();
+        let path = |id: u32| paths.get(&id).map(|s| s.to_string());
+        let kit = |k: u32| kits.get(&k).cloned().unwrap_or_default();
+        let bolt = VisualStages {
+            precast: 10,
+            cast: 10,
+            impact: 11,
+            missile_model: 1,
+            ..Default::default()
+        };
+        let fx = visual_fx(&bolt, &path, &kit);
+        assert_eq!(fx.missile.as_deref(), Some("Spells\\Frostbolt.mdx"));
+        assert_eq!(
+            fx.impact.as_deref(),
+            Some("Spells\\Ice_ImpactDD_Med_Chest.mdx")
+        );
+        assert_eq!(fx.area, None, "hand effects are not a ground burst");
+        let nova = VisualStages {
+            cast: 12,
+            state: 13,
+            ..Default::default()
+        };
+        let fx = visual_fx(&nova, &path, &kit);
+        assert_eq!(fx.area.as_deref(), Some("Spells\\Frost_Nova_area.mdx"));
+        assert_eq!(
+            fx.state.as_deref(),
+            Some("Spells\\Frost_Nova_state.mdx"),
+            "world slot first"
+        );
+        let merged = merge_fx([SkillFx::default(), fx.clone()].into_iter());
+        assert_eq!(merged, fx);
     }
 
     #[test]

@@ -6,13 +6,16 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
+use super::art::WowArt;
 use super::enemies::Enemy;
+use super::fx::{self, BurstKind, FxBudget};
 use super::hero::HeroHealth;
 use super::rules::{self, Rng, Stats};
 use super::visuals::{spawn_flash, Placeholders};
 use super::{hero_on_ground, CombatRng, CombatSet, Run};
 use crate::content::{SkillId, SkillLevel};
 use crate::game::Hero;
+use crate::models::ModelPlaceholder;
 use crate::models::{AnimState, ModelAnim};
 
 pub struct SkillsPlugin;
@@ -83,6 +86,8 @@ pub struct Burn {
 /// A ground area that ticks damage (and maybe a slow) on what stands in it.
 #[derive(Component)]
 pub struct Zone {
+    /// Whose area it is (its look).
+    pub skill: SkillId,
     pub damage: f32,
     pub radius: f32,
     pub tick: f32,
@@ -137,6 +142,8 @@ fn cast_skills(
     run: Res<Run>,
     save: Res<super::save::Save>,
     assets: Res<Placeholders>,
+    art: Res<WowArt>,
+    mut budget: ResMut<FxBudget>,
     mut timers: ResMut<SkillTimers>,
     mut rng: ResMut<CombatRng>,
     mut health: ResMut<HeroHealth>,
@@ -227,7 +234,16 @@ fn cast_skills(
                             }
                         }
                     }
-                    spawn_flash(&mut commands, &assets, id, hero, s.radius);
+                    fx::burst(
+                        &mut commands,
+                        &mut budget,
+                        &art,
+                        &assets,
+                        id,
+                        BurstKind::Area,
+                        hero,
+                        s.radius,
+                    );
                     true
                 }
             }
@@ -263,9 +279,27 @@ fn cast_skills(
                         near
                     };
                     let to = rules::blink_target(hero, &threat, s.range, facing);
-                    spawn_flash(&mut commands, &assets, id, hero, 1.5);
+                    fx::burst(
+                        &mut commands,
+                        &mut budget,
+                        &art,
+                        &assets,
+                        id,
+                        BurstKind::Area,
+                        hero,
+                        2.5,
+                    );
                     hero_xf.translation = to.with_y(hero.y);
-                    spawn_flash(&mut commands, &assets, id, hero_xf.translation, 1.5);
+                    fx::burst(
+                        &mut commands,
+                        &mut budget,
+                        &art,
+                        &assets,
+                        id,
+                        BurstKind::Area,
+                        hero_xf.translation,
+                        2.5,
+                    );
                     health.invulnerable = health.invulnerable.max(s.duration);
                     true
                 } else {
@@ -306,26 +340,33 @@ fn spawn_projectile(
     let at = from + Vec3::Y * CAST_HEIGHT;
     let homing = target.is_some();
     let life = if homing { 3.0 } else { s.range / s.speed * 1.4 };
-    commands.spawn((
-        Name::new(id.def().name),
-        Projectile {
-            skill: id,
-            dir,
-            speed: s.speed,
-            damage: s.damage,
-            pierce: s.pierce,
-            life,
-            hit: Vec::new(),
-            homing,
-            target,
-            on_hit: on_hit_for(id, s),
-        },
-        Mesh3d(mesh),
-        MeshMaterial3d(assets.solid[&id].clone()),
-        Transform::from_translation(at)
-            .looking_to(dir, Vec3::Y)
-            .with_scale(Vec3::splat(scale)),
-    ));
+    commands
+        .spawn((
+            Name::new(id.def().name),
+            Projectile {
+                skill: id,
+                dir,
+                speed: s.speed,
+                damage: s.damage,
+                pierce: s.pierce,
+                life,
+                hit: Vec::new(),
+                homing,
+                target,
+                on_hit: on_hit_for(id, s),
+            },
+            Transform::from_translation(at).looking_to(dir, Vec3::Y),
+            Visibility::default(),
+        ))
+        .with_children(|c| {
+            // The plain shape until the client's missile model is in (`fx`).
+            c.spawn((
+                Mesh3d(mesh),
+                MeshMaterial3d(assets.solid[&id].clone()),
+                Transform::from_scale(Vec3::splat(scale)),
+                ModelPlaceholder,
+            ));
+        });
 }
 
 fn spawn_zone(
@@ -340,6 +381,7 @@ fn spawn_zone(
         assets,
         id,
         Zone {
+            skill: id,
             damage: s.damage,
             radius: s.radius,
             tick: s.tick,
@@ -359,13 +401,22 @@ fn spawn_zone_with(
     at: Vec3,
 ) {
     let r = zone.radius;
-    commands.spawn((
-        Name::new(id.def().name),
-        zone,
-        Mesh3d(assets.disc.clone()),
-        MeshMaterial3d(assets.glass[&id].clone()),
-        Transform::from_translation(at + Vec3::Y * 0.15).with_scale(Vec3::new(r, 1.0, r)),
-    ));
+    commands
+        .spawn((
+            Name::new(id.def().name),
+            zone,
+            Transform::from_translation(at + Vec3::Y * 0.15),
+            Visibility::default(),
+        ))
+        .with_children(|c| {
+            // The plain disc until the client's area model is in (`fx`).
+            c.spawn((
+                Mesh3d(assets.disc.clone()),
+                MeshMaterial3d(assets.glass[&id].clone()),
+                Transform::from_scale(Vec3::new(r, 1.0, r)),
+                ModelPlaceholder,
+            ));
+        });
 }
 
 /// Projectiles fly, steer (missiles), hit, pierce, slow, freeze or explode.
@@ -376,6 +427,8 @@ fn move_projectiles(
     run: Res<Run>,
     save: Res<super::save::Save>,
     assets: Res<Placeholders>,
+    art: Res<WowArt>,
+    mut budget: ResMut<FxBudget>,
     mut rng: ResMut<CombatRng>,
     mut projs: Query<(Entity, &mut Transform, &mut Projectile), Without<Enemy>>,
     mut enemies: Query<(Entity, &Transform, &mut Enemy), Without<Projectile>>,
@@ -427,7 +480,17 @@ fn move_projectiles(
             match p.on_hit {
                 OnHit::Explode { .. } => done = true,
                 on_hit => {
-                    if let Ok((_, _, mut en)) = enemies.get_mut(target) {
+                    if let Ok((_, exf, mut en)) = enemies.get_mut(target) {
+                        fx::burst(
+                            &mut commands,
+                            &mut budget,
+                            &art,
+                            &assets,
+                            p.skill,
+                            BurstKind::Impact,
+                            exf.translation + Vec3::Y * CAST_HEIGHT,
+                            0.0,
+                        );
                         strike(&mut en, p.damage, &stats, rng);
                         match on_hit {
                             OnHit::Chill(slow, secs) => en.chill(slow, secs),
@@ -457,13 +520,31 @@ fn move_projectiles(
                     }
                 }
                 let ground = pos - Vec3::Y * CAST_HEIGHT;
-                spawn_flash(&mut commands, &assets, p.skill, ground, radius);
+                fx::burst(
+                    &mut commands,
+                    &mut budget,
+                    &art,
+                    &assets,
+                    p.skill,
+                    BurstKind::Impact,
+                    pos,
+                    radius,
+                );
+                if art
+                    .fx
+                    .get(&p.skill)
+                    .and_then(|f| f.impact.as_ref())
+                    .is_none()
+                {
+                    spawn_flash(&mut commands, &assets, p.skill, ground, radius);
+                }
                 if let Some(b) = burn {
                     spawn_zone_with(
                         &mut commands,
                         &assets,
                         SkillId::Flamestrike,
                         Zone {
+                            skill: p.skill,
                             damage: b.damage,
                             radius: b.radius,
                             tick: b.tick,

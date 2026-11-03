@@ -28,13 +28,22 @@ pub struct Orb {
 pub fn spawn_orb(commands: &mut Commands, assets: &Placeholders, at: Vec3, xp: u32) {
     // Bigger orbs for bigger XP.
     let scale = (0.8 + 0.25 * xp as f32).min(2.5);
-    commands.spawn((
-        Name::new("xp orb"),
-        Orb { xp },
-        Mesh3d(assets.orb.0.clone()),
-        MeshMaterial3d(assets.orb.1.clone()),
-        Transform::from_translation(at + Vec3::Y * 0.4).with_scale(Vec3::splat(scale)),
-    ));
+    commands
+        .spawn((
+            Name::new("xp orb"),
+            Orb { xp },
+            Transform::from_translation(at + Vec3::Y * 0.4).with_scale(Vec3::splat(scale)),
+            Visibility::default(),
+        ))
+        .with_children(|c| {
+            // The plain sphere until the client's orb model is in (`fx`).
+            c.spawn((
+                Mesh3d(assets.orb.0.clone()),
+                MeshMaterial3d(assets.orb.1.clone()),
+                Transform::default(),
+                crate::models::ModelPlaceholder,
+            ));
+        });
 }
 
 fn collect_orbs(
