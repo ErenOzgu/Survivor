@@ -31,7 +31,7 @@ pub struct WaveParams {
     pub weights: [f32; 5],
 }
 
-/// The wave at `t` seconds into the run: steadily denser, then stronger; wolves join at 0:45,
+/// The wave at `t` seconds into the run: steadily denser, then stronger; wolves join at 1:15,
 /// spiders at 2:00, geomancers at 3:00, sappers at 4:30.
 pub fn wave_at(t: f32) -> WaveParams {
     let t = t.max(0.0);
@@ -44,7 +44,7 @@ pub fn wave_at(t: f32) -> WaveParams {
         damage_mul: 1.0 + t / 400.0,
         weights: [
             1.0,
-            0.9 * ramp(45.0, 60.0),
+            0.9 * ramp(75.0, 60.0),
             0.7 * ramp(120.0, 90.0),
             0.45 * ramp(180.0, 90.0),
             0.4 * ramp(270.0, 90.0),

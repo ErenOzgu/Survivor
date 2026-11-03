@@ -57,7 +57,7 @@ oynanabilir bir savaş döngüsü kurar:
 | Düşman | Ne zaman | Ne yapar |
 |---|---|---|
 | Kobold | baştan | Yavaş, kalabalık; değince hasar |
-| Kurt | 0:45 | Hızlı, sürüyle gelir |
+| Kurt | 1:15 | Hızlı, sürüyle gelir |
 | Örümcek | 2:00 | Dayanıklı, değince çok acıtır |
 | **Kobold Falcı** | 3:00 | Uzakta durur (≈10 yard), yaklaşınca geri çekilir; yavaş mor büyü fırlatır (koşarak kaçılır) |
 | **Fitilci Kobold** | 4:30 | Hızlı koşar, dibine gelince fitili yakar: yerde kırmızı daire büyür, 0,9 sn sonra patlar. Kendini patlatırsa XP vermez; önce öldür ya da daireden çık |

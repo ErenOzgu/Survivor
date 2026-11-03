@@ -133,7 +133,7 @@ pub static KOBOLD: EnemyDef = EnemyDef {
 pub static WOLF: EnemyDef = EnemyDef {
     name: "Kurt",
     health: 12.0,
-    speed: 6.0,
+    speed: 5.2,
     contact_dps: 7.0,
     xp: 1,
     radius: 0.6,

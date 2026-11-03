@@ -12,7 +12,7 @@ use crate::content::{SkillId, MAX_SKILLS};
 pub const START_SKILL: SkillId = SkillId::Frostbolt;
 /// Hero health and its regeneration per second.
 pub const HERO_MAX_HEALTH: f32 = 100.0;
-pub const HERO_REGEN: f32 = 0.6;
+pub const HERO_REGEN: f32 = 1.0;
 /// Cards offered per level-up.
 pub const CARDS: usize = 3;
 /// Health a "can iksiri" card gives back, when there is nothing left to learn.
