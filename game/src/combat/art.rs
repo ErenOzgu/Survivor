@@ -273,6 +273,15 @@ pub fn fx_sources(id: SkillId) -> &'static [&'static str] {
     }
 }
 
+/// A spell whose ground look a skill borrows when its own has none (Pyroblast's burning ground
+/// wears Flamestrike's fire).
+pub fn area_fallback(id: SkillId) -> Option<&'static str> {
+    match id {
+        SkillId::Pyroblast => Some("Flamestrike"),
+        _ => None,
+    }
+}
+
 /// Merges effect sets: the first that has each role wins.
 pub fn merge_fx(sets: impl Iterator<Item = SkillFx>) -> SkillFx {
     let mut out = SkillFx::default();
@@ -456,10 +465,11 @@ fn load_art(
         for id in SkillId::every() {
             let own = fx_of(id.def().icon_spell);
             let borrowed: Vec<SkillFx> = fx_sources(id).iter().map(|n| fx_of(n)).collect();
-            fx.insert(
-                id,
-                merge_fx(borrowed.into_iter().chain(std::iter::once(own))),
-            );
+            let mut merged = merge_fx(borrowed.into_iter().chain(std::iter::once(own)));
+            if merged.area.is_none() {
+                merged.area = area_fallback(id).and_then(|n| fx_of(n).area);
+            }
+            fx.insert(id, merged);
         }
         let mut abilities = HashMap::new();
         for a in AbilityId::ALL {

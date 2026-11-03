@@ -48,7 +48,7 @@ const BURST_LIFE: f32 = 1.4;
 pub fn native_radius(id: SkillId) -> f32 {
     match id {
         SkillId::FrostNova | SkillId::ArcaneExplosion => 10.0,
-        SkillId::Blizzard | SkillId::Flamestrike => 8.0,
+        SkillId::Blizzard | SkillId::Flamestrike | SkillId::Pyroblast => 8.0,
         _ => 5.0,
     }
 }
